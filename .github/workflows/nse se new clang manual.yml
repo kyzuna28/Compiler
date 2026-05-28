@@ -1,5 +1,5 @@
-# Kyzuna Project - Customized for Poco F1 (beryllium)
-name: se nse new include
+# Linex Project - Customized for Poco F1 (beryllium)
+name: se nse new clang include
 run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.compiler }}
 
 on:
@@ -122,8 +122,10 @@ jobs:
          elif [ "${{ inputs.compiler }}" = "yuki-clang" ]; then
              git clone --depth=1 https://gitlab.com/TheXPerienceProject/yuki_clang.git -b 18.0.0 $HOME/tc
          elif [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
+             mkdir -p $HOME/tc
              wget -q https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz -O weebx-clang.tar.gz
-             tar -xf weebx-clang.tar.gz -C $HOME/tc && rm -f weebx-clang.tar.gz
+             tar -xf weebx-clang.tar.gz -C $HOME/tc
+             rm -f weebx-clang.tar.gz
          elif [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
              git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 $HOME/tc
          elif [ "${{ inputs.compiler }}" = "debian-clang" ]; then
@@ -206,7 +208,7 @@ jobs:
          cd kernel-dir
          export PATH=$HOME/tc/bin:$PATH
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-         export KBUILD_BUILD_HOST="project_labs"
+         export KBUILD_BUILD_HOST="project"
          
          rm -rf ../out && mkdir -p ../out
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
@@ -222,7 +224,7 @@ jobs:
          
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
-              CROSS_COMPILE=aarch64-linux-android- CLANG_TRIPLE=aarch64-linux-gnu- \
+              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
               LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
               KCFLAGS="-w -Wno-error -fno-builtin $EXTRA_CFLAGS" \
               Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
