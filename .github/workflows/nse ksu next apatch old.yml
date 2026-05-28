@@ -1,0 +1,275 @@
+# linex Project - Customized for Poco F1 (beryllium)
+name: final ksu apatch old clang
+
+on:
+  workflow_dispatch:
+    inputs:
+      ubuntu:
+        description: 'Run on (ubuntu-22.04 / ubuntu-latest)'
+        default: 'ubuntu-22.04'
+        required: true
+        type: string
+      zip_name:
+        description: 'Nama File Akhir'
+        default: 'Beryllium'
+        required: true
+        type: string
+      kernel_version:
+        description: 'Versi angka (misal 4.19.1) atau "original"'
+        default: 'original'
+        required: true
+        type: string
+      kernel_name:
+        description: 'Nama Utama Kernel'
+        default: 'cip128-st12'
+        required: true
+        type: string
+      rom_type:
+        description: 'Tipe ROM / Tag Cabang'
+        default: 'Kyy'
+        required: true
+        type: string
+      project_name:
+        description: 'Build Project (@nama-project)'
+        default: 'selea×kyy'
+        required: true
+        type: string
+      compiler:
+        description: 'Pilih Compiler Clang'
+        default: 'weebx-clang'
+        required: true
+        type: choice
+        options:
+        - aosp-clang
+        - proton-clang
+        - weebx-clang
+        - zyc-clang
+        - gengkapak-clang
+        - kryo-clang
+        - stormbreaker-clang
+        - debian-clang
+      kernel-url:
+        description: 'Kernel Source URL'
+        default: 'https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git'
+        required: true
+        type: string
+      kernel-branch:
+        description: 'Kernel Branch'
+        default: 'lineage-18.1'
+        required: true
+        type: string
+      kernel-config:
+        description: 'Kernel Defconfig'
+        default: 'beryllium_defconfig'
+        required: true
+        type: string
+      kernelsu:
+        description: 'KernelSU (ksu / false)'
+        default: 'false'
+        required: true
+        type: choice
+        options:
+        - ksu
+        - "false"
+
+jobs:
+  build:
+    runs-on: ${{ inputs.ubuntu }}
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+    - name: Persiapan Lingkungan & Pembersihan Storage
+      run: |
+         sudo timedatectl set-timezone Asia/Jakarta
+         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+         sudo docker image prune --all --force
+
+    - name: Checkout Workflow
+      uses: actions/checkout@v4
+
+    - name: Instalasi Dependensi
+      run: |
+         sudo apt-get update
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd
+         
+         if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
+             sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || true
+             sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.6.0 || true
+         else
+             sudo apt-get install --no-install-recommends -y libtinfo5 || true
+         fi
+
+    - name: Opsi Kinerja Swap Space
+      run: |
+         sudo swapoff -a || true
+         sudo rm -f /mnt/swapfile || true
+         sudo fallocate -l 16G /mnt/swapfile
+         sudo chmod 600 /mnt/swapfile
+         sudo mkswap /mnt/swapfile
+         sudo swapon /mnt/swapfile
+
+    - name: Unduh Toolchains
+      run: |
+         rm -rf $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
+         mkdir -p $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
+         
+         aria2c -q -o gcc-64.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz"
+         tar -C $HOME/gcc-64 -zxf gcc-64.tar.gz && rm gcc-64.tar.gz
+         aria2c -q -o gcc-32.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz"
+         tar -C $HOME/gcc-32 -zxf gcc-32.tar.gz && rm gcc-32.tar.gz
+         
+         if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
+             git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git $HOME/tc
+         elif [ "${{ inputs.compiler }}" = "zyc-clang" ]; then
+             URL="https://github.com/ZyCromerZ/Clang/releases/download/13.0.1-20230207-release/Clang-13.0.1-20230207.tar.gz"
+             aria2c -q -o zyc-tc.tar.gz "$URL"
+             tar -C $HOME/tc -zxf zyc-tc.tar.gz && rm zyc-tc.tar.gz
+         elif [ "${{ inputs.compiler }}" = "gengkapak-clang" ]; then
+             git clone https://github.com/GK-Devs/GengKapak-clang.git -b main --depth=1 $HOME/tc
+         elif [ "${{ inputs.compiler }}" = "kryo-clang" ]; then
+             git clone https://github.com/Kry9toN/clang.git -b dev/13.0 --depth=1 $HOME/tc
+         elif [ "${{ inputs.compiler }}" = "stormbreaker-clang" ]; then
+             git clone https://github.com/stormbreaker-project/stormbreaker-clang.git -b 11.x --depth=1 $HOME/tc
+         elif [ "${{ inputs.compiler }}" = "debian-clang" ]; then
+             sudo apt-get install --no-install-recommends -y clang-13 lld-13 llvm-13
+             mkdir -p $HOME/tc/bin
+             ln -sf /usr/bin/clang-13 $HOME/tc/bin/clang
+             ln -sf /usr/bin/ld.lld-13 $HOME/tc/bin/ld.lld
+             ln -sf /usr/bin/llvm-ar-13 $HOME/tc/bin/llvm-ar
+             ln -sf /usr/bin/llvm-nm-13 $HOME/tc/bin/llvm-nm
+             ln -sf /usr/bin/llvm-objcopy-13 $HOME/tc/bin/llvm-objcopy
+             ln -sf /usr/bin/llvm-objdump-13 $HOME/tc/bin/llvm-objdump
+         elif [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
+             if [ "${{ inputs.compiler }}" = "proton-clang" ]; then
+                 URL="https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
+             else
+                 URL="https://github.com/Klozz/Yuki-clang/archive/refs/heads/master.tar.gz"
+             fi
+             aria2c -q -o toolchain.tar.gz "$URL"
+             tar -C $HOME/tmp-tc -zxf toolchain.tar.gz && rm toolchain.tar.gz
+             mv $HOME/tmp-tc/*/* $HOME/tc/ 2>/dev/null || mv $HOME/tmp-tc/* $HOME/tc/
+             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
+         fi
+         rm -rf $HOME/tmp-tc
+
+    - name: Clone Kernel Source
+      run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+      
+    - name: Konfigurasi Defconfig & Disable LTO
+      run: |
+         cd kernel-dir
+         
+         if [ "${{ inputs.kernel_version }}" != "original" ] && [ "${{ inputs.kernel_version }}" != "" ]; then
+             sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
+             sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
+             sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
+         fi
+         
+         # Pembersihan Massal Bendera Polly Menggunakan Find & Sed
+         find . -type f \( -name "Makefile*" -o -name "*.mk" -o -name "*.config" -o -name "*defconfig" \) -exec sed -i 's/-mllvm -polly[-a-zA-Z0-9_=]*//g' {} + || true
+         find . -type f \( -name "Makefile*" -o -name "*.mk" -o -name "*.config" -o -name "*defconfig" \) -exec sed -i 's/-polly[-a-zA-Z0-9_=]*//g' {} + || true
+         
+         TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
+         
+         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g" $TARGET_CONFIG || true
+         sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=y/g" $TARGET_CONFIG || true
+         echo "CONFIG_LOCALVERSION_AUTO=y" >> $TARGET_CONFIG
+         rm -f .scmversion out/.scmversion
+         
+         if [ -f scripts/setlocalversion ]; then
+             sed -i 's/scm_version_string=""/scm_version_string="-dirty"/g' scripts/setlocalversion || true
+         fi
+         
+         # Kebutuhan Wajib APatch (Kallsyms & Kprobes Unstripped)
+         echo "CONFIG_KALLSYMS=y" >> $TARGET_CONFIG
+         echo "CONFIG_KALLSYMS_ALL=y" >> $TARGET_CONFIG
+         echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
+         echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
+         
+         # Optimasi Defconfig Penting
+         echo "CONFIG_AUDIO_ELLIPTIC=n" >> $TARGET_CONFIG
+         echo "CONFIG_EFI=n" >> $TARGET_CONFIG
+         echo "CONFIG_EFI_STUB=n" >> $TARGET_CONFIG
+         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $TARGET_CONFIG
+         echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
+         
+         # Modifikasi kecocokan Android modern
+         echo "CONFIG_ANDROID_BINDERFS=y" >> $TARGET_CONFIG
+         echo "CONFIG_CGROUPS=y" >> $TARGET_CONFIG
+         echo "CONFIG_CGROUP_BPF=y" >> $TARGET_CONFIG
+         echo "CONFIG_MEMCG=y" >> $TARGET_CONFIG
+         echo "CONFIG_MEMCG_SWAP=y" >> $TARGET_CONFIG
+         
+         # Penonaktifan LTO Total
+         sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_LTO_NONE=.*/# CONFIG_LTO_NONE is not set/g' $TARGET_CONFIG || true
+         echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
+
+         # Integrasi KernelSU (Hanya KSU Resmi)
+         if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
+             echo "Menerapkan KernelSU resmi..."
+             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+         fi
+         
+    - name: Proses Kompilasi Kernel
+      run: |
+         cd kernel-dir
+         export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
+         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
+         export KBUILD_BUILD_HOST="project_labs"
+         
+         rm -rf ../out && mkdir -p ../out
+         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
+         
+         TOTAL_CORES=$(nproc --all)
+         SAFE_CORES=$((TOTAL_CORES > 1 ? TOTAL_CORES - 1 : 1))
+         CLEAN_ROM_TYPE=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
+         
+         make -j$SAFE_CORES ARCH=arm64 O=../out \
+              CC=clang \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              LLVM_IAS=0 \
+              CROSS_COMPILE=aarch64-linux-android- \
+              CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              GCC_TOOLCHAIN=$HOME/gcc-64 \
+              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM_TYPE}" \
+              KCFLAGS="-w -Wno-error -fno-builtin" \
+              HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
+         
+         if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
+             echo "ERROR: Kompilasi Gagal!"
+             tail -n 150 build.log
+             exit 1
+         fi
+         
+    - name: Kumpulkan Mentahan Biner Kernel
+      run: |
+          mkdir -p $GITHUB_WORKSPACE/kernel_binaries
+          
+          if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
+              cp out/arch/arm64/boot/Image.gz-dtb $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
+          elif [ -f "out/arch/arm64/boot/Image.gz" ]; then
+              DTB_PATH="out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb"
+              if [ -f "$DTB_PATH" ]; then
+                  cat out/arch/arm64/boot/Image.gz $DTB_PATH > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
+              else
+                  cp out/arch/arm64/boot/Image.gz $GITHUB_WORKSPACE/kernel_binaries/Image.gz
+              fi
+          fi
+          
+          if [ -f "out/arch/arm64/boot/dtbo.img" ]; then
+              cp out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
+          fi
+
+    - name: Upload Biner Mentah Kernel
+      uses: actions/upload-artifact@v4
+      with:
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
+        path: kernel_binaries/**
+        
