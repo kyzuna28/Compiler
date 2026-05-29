@@ -59,7 +59,7 @@ on:
         - disable
         - kernelsunext
         - resukisu
-        - rksu
+        - sukisu_ultra
       su_version:
         default: 'old'
         required: true
@@ -155,21 +155,22 @@ jobs:
       run: |
          cd kernel-dir
          
-         if [ "${{ inputs.su_version }}" = "new" ]; then
-             BRANCH="main"
-         elif [ "${{ inputs.su_version }}" = "old" ]; then
-             BRANCH="legacy"
-         fi
-         
          if [ "${{ inputs.su_mode }}" = "kernelsunext" ]; then
+             BRANCH=$([ "${{ inputs.su_version }}" = "new" ] && echo "main" || echo "legacy")
              echo "Menginstal KernelSU-Next ($BRANCH)..."
              curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/$BRANCH/kernel/setup.sh" | bash -s $BRANCH
+             
          elif [ "${{ inputs.su_mode }}" = "resukisu" ]; then
+             # ReSukiSU: 'new' mengambil versi eksperimental (dev), 'old' mengambil versi stabil (main)
+             BRANCH=$([ "${{ inputs.su_version }}" = "new" ] && echo "dev" || echo "main")
              echo "Menginstal ResukiSU ($BRANCH)..."
              curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/$BRANCH/kernel/setup.sh" | bash -s $BRANCH
-         elif [ "${{ inputs.su_mode }}" = "rksu" ]; then
-             echo "Menginstal RKSU ($BRANCH)..."
-             curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/$BRANCH/kernel/setup.sh" | bash -s $BRANCH
+             
+         elif [ "${{ inputs.su_mode }}" = "sukisu_ultra" ]; then
+             # SukiSU Ultra secara spesifik menggunakan 'old' untuk kernel lama
+             BRANCH=$([ "${{ inputs.su_version }}" = "new" ] && echo "main" || echo "old")
+             echo "Menginstal SukiSU Ultra ($BRANCH)..."
+             curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/$BRANCH/kernel/setup.sh" | bash -s $BRANCH
          fi
 
     - name: Tweak Defconfig
@@ -226,6 +227,14 @@ jobs:
              echo "CONFIG_DEBUG_INFO=n" >> $TARGET_CONFIG
          fi
          
+         # Auto-Inject KPROBES untuk KernelSU / Fork KSU di Non-GKI
+         if [ "${{ inputs.su_mode }}" = "kernelsunext" ] || [ "${{ inputs.su_mode }}" = "resukisu" ] || [ "${{ inputs.su_mode }}" = "sukisu_ultra" ]; then
+             echo "Mengaktifkan KPROBES untuk varian KernelSU..."
+             echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
+             echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
+             echo "CONFIG_KPROBE_EVENTS=y" >> $TARGET_CONFIG
+         fi
+
          # Mode APatch (Otomatis Aktif Jika Pilih 'disable')
          if [ "${{ inputs.su_mode }}" = "disable" ]; then
              echo "Mengaktifkan konfigurasi APatch..."
@@ -297,4 +306,4 @@ jobs:
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/**
-
+        
