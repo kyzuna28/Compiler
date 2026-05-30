@@ -79,7 +79,7 @@ on:
         required: true
         type: string
       kernel-branch:
-        default: 'susfsarrow'
+        default: 'nse'
         required: true
         type: string
       kernel-config:
@@ -155,16 +155,20 @@ jobs:
       run: |
          cd kernel-dir
          
-         # 1. 🚀 EKSEKUSI PATCH MANUAL HOOK DULUAN SEBELUM KSU
+         # 1. 🚀 CEK & EKSEKUSI PATCH MANUAL HOOK
          if [ "${{ inputs.su_mode }}" != "disable" ]; then
-             echo "Menerapkan Patch Manual Hook 4.4/4.9 terlebih dahulu..."
-             wget https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
-             patch -p1 -N < kernel-4.4_4.9.patch || true
+             if grep -q "ksu_handle" fs/exec.c; then
+                 echo "✅ Manual Hook KSU sudah terpasang di source code lu. Skip download patch biar nggak bentrok!"
+             else
+                 echo "⚠️ Manual Hook belum ada. Mengunduh dan menerapkan Patch 4.4/4.9..."
+                 wget https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
+                 patch -p1 -N --no-backup-if-mismatch < kernel-4.4_4.9.patch || true
+             fi
          fi
 
-         # 2. 🚀 BARU INSTALL KSU SCRIPT-NYA
+         # 2. 🚀 INSTALL KSU/FORK SCRIPT
          if [ "${{ inputs.su_mode }}" = "kernelsunext" ]; then
-             BRANCH=$([ "${{ inputs.su_version }}" = "new" ] && echo "main" || echo "legacy")
+             BRANCH=$([ "${{ inputs.su_version }}" = "new" ] && echo "next" || echo "main")
              echo "Menginstal KernelSU-Next ($BRANCH)..."
              curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/$BRANCH/kernel/setup.sh" | bash -s $BRANCH
              
@@ -183,21 +187,24 @@ jobs:
              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
          fi
          
-         # 3. 🚀 FIX ERROR MODULE_IMPORT_NS, TWA_RESUME, & MISSING HEADERS UNTUK KERNEL 4.9
-         if [ -d drivers/kernelsu ]; then
-             echo "Mengeksekusi Backport Fixes untuk Kernel 4.9..."
+         # 3. 🚀 DYNAMIC KSU DIR DETECTOR & KERNEL 4.9 FIXES
+         SU_DIR=$(find drivers/ -maxdepth 1 -type d -name "*su*" | head -n 1)
+         if [ ! -z "$SU_DIR" ]; then
+             echo "✅ Modul SU Terdeteksi di $SU_DIR. Mengeksekusi Backport Fixes untuk Kernel 4.9..."
              
              # Fix 1: Bypass MODULE_IMPORT_NS
-             [ -f drivers/kernelsu/ksu.c ] && sed -i 's/MODULE_IMPORT_NS(.*);//g' drivers/kernelsu/ksu.c || true
+             [ -f $SU_DIR/ksu.c ] && sed -i 's/MODULE_IMPORT_NS(.*);//g' $SU_DIR/ksu.c || true
              
-             # Fix 2: Ganti TWA_RESUME menjadi true untuk argumen bool ke-3 task_work_add
-             find drivers/kernelsu/ -type f -name "*.c" -exec sed -i 's/TWA_RESUME/true/g' {} + || true
+             # Fix 2: Ganti TWA_RESUME menjadi true
+             find $SU_DIR/ -type f -name "*.c" -exec sed -i 's/TWA_RESUME/true/g' {} + || true
              
              # Fix 3: Ganti linux/sched/signal.h menjadi linux/sched.h
-             find drivers/kernelsu/ -type f -exec sed -i 's/linux\/sched\/signal\.h/linux\/sched\.h/g' {} + || true
+             find $SU_DIR/ -type f -exec sed -i 's/linux\/sched\/signal\.h/linux\/sched\.h/g' {} + || true
              
              # Fix Kbuild Fatal Error
-             [ -f drivers/kernelsu/Kbuild ] && sed -i 's/$(error/$(warning/g' drivers/kernelsu/Kbuild || true
+             [ -f $SU_DIR/Kbuild ] && sed -i 's/$(error/$(warning/g' $SU_DIR/Kbuild || true
+         else
+             echo "ℹ️ Modul instalasi SU tidak ditemukan, skip backport fix."
          fi
          
     - name: Tweak Defconfig
