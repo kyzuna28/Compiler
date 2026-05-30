@@ -106,7 +106,7 @@ jobs:
     - name: Install Dependencies
       run: |
          sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch
          
          if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
              sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || true
@@ -151,10 +151,19 @@ jobs:
     - name: Clone Kernel Source
       run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
 
-    - name: Setup SU / KSU Forks (100% Fix)
+    - name: Apply Patch & Setup SU
       run: |
          cd kernel-dir
          
+         # 1. 🚀 EKSEKUSI PATCH MANUAL HOOK DULUAN SEBELUM KSU
+         if [ "${{ inputs.su_mode }}" != "disable" ]; then
+             echo "Menerapkan Patch Manual Hook 4.4/4.9 terlebih dahulu..."
+             wget https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
+             # Flag -N (--forward) dipakai agar patch mengabaikan file yang sudah terlanjur di-patch oleh dev kernel lu
+             patch -p1 -N < kernel-4.4_4.9.patch || true
+         fi
+
+         # 2. 🚀 BARU INSTALL KSU SCRIPT-NYA
          if [ "${{ inputs.su_mode }}" = "kernelsunext" ]; then
              BRANCH=$([ "${{ inputs.su_version }}" = "new" ] && echo "main" || echo "legacy")
              echo "Menginstal KernelSU-Next ($BRANCH)..."
@@ -175,14 +184,9 @@ jobs:
              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
          fi
          
-         # 💯 100% BRUTE-FORCE BYPASS UNTUK KBUILD ERROR
+         # 3. Brute-Force Bypass Kbuild (Hanya jaga-jaga kalau setup script KSU mereset sesuatu)
          if [ -f drivers/kernelsu/Kbuild ]; then
-             echo "Mengubah semua Fatal Error menjadi Warning di Kbuild KSU..."
-             # 1. Ganti kata kunci penghenti proses 'error' menjadi sekadar peringatan 'warning'
              sed -i 's/$(error/$(warning/g' drivers/kernelsu/Kbuild || true
-             
-             # 2. Paksa compiler membaca manual hook dengan menanam variabel langsung ke Makefile KSU
-             sed -i '1i ccflags-y += -DCONFIG_KSU_MANUAL_HOOK=1\n' drivers/kernelsu/Kbuild || true
          fi
 
     - name: Tweak Defconfig
@@ -193,13 +197,11 @@ jobs:
          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g" $TARGET_CONFIG || true
          
          if [ "${{ inputs.version_hash }}" = "enable" ]; then
-             echo "Mengaktifkan format gxxxx-dirty..."
              sed -i "s/# CONFIG_LOCALVERSION_AUTO is not set/CONFIG_LOCALVERSION_AUTO=y/g" $TARGET_CONFIG || true
              echo "CONFIG_LOCALVERSION_AUTO=y" >> $TARGET_CONFIG
              rm -f .scmversion out/.scmversion
              [ -f scripts/setlocalversion ] && sed -i 's/scm_version_string=""/scm_version_string="-dirty"/g' scripts/setlocalversion || true
          else
-             echo "Menonaktifkan format gxxxx-dirty (Clean Version)..."
              sed -i "s/CONFIG_LOCALVERSION_AUTO=y/# CONFIG_LOCALVERSION_AUTO is not set/g" $TARGET_CONFIG || true
              echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
              echo "" > .scmversion
@@ -235,19 +237,23 @@ jobs:
          fi
          
          if [ "${{ inputs.su_mode }}" != "disable" ]; then
-             echo "Mengaktifkan config KSU secara agresif..."
-             echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
-             echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
-             echo "CONFIG_KPROBE_EVENTS=y" >> $TARGET_CONFIG
+             echo "Mengaktifkan KSU & MANUAL_HOOK sesuai instruksi RKSUORG..."
+             
+             # 🚀 CRITICAL FIX: DONT ENABLE CONFIG_KPROBES!
+             sed -i "s/CONFIG_KPROBES=y/# CONFIG_KPROBES is not set/g" $TARGET_CONFIG || true
+             sed -i "s/CONFIG_HAVE_KPROBES=y/# CONFIG_HAVE_KPROBES is not set/g" $TARGET_CONFIG || true
+             sed -i "s/CONFIG_KPROBE_EVENTS=y/# CONFIG_KPROBE_EVENTS is not set/g" $TARGET_CONFIG || true
+             echo "# CONFIG_KPROBES is not set" >> $TARGET_CONFIG
+             echo "# CONFIG_KPROBE_EVENTS is not set" >> $TARGET_CONFIG
+             
+             # 🚀 Add Config
              echo "CONFIG_KSU_MANUAL_HOOK=y" >> $TARGET_CONFIG
              echo "CONFIG_KSU=y" >> $TARGET_CONFIG
          fi
 
          if [ "${{ inputs.su_mode }}" = "disable" ]; then
-             echo "Menonaktifkan fitur KSU (bypass header fix)..."
              echo "# CONFIG_KSU is not set" >> $TARGET_CONFIG
              echo "CONFIG_KSU=n" >> $TARGET_CONFIG
-             echo "Mengaktifkan konfigurasi APatch..."
              for cfg in OVERLAY_FS KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE; do
                  echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
              done
