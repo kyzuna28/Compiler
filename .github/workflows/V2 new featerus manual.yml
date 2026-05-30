@@ -159,7 +159,6 @@ jobs:
          if [ "${{ inputs.su_mode }}" != "disable" ]; then
              echo "Menerapkan Patch Manual Hook 4.4/4.9 terlebih dahulu..."
              wget https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
-             # Flag -N (--forward) dipakai agar patch mengabaikan file yang sudah terlanjur di-patch oleh dev kernel lu
              patch -p1 -N < kernel-4.4_4.9.patch || true
          fi
 
@@ -184,11 +183,16 @@ jobs:
              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
          fi
          
-         # 3. Brute-Force Bypass Kbuild (Hanya jaga-jaga kalau setup script KSU mereset sesuatu)
+         # 3. 🚀 FIX ERROR MODULE_IMPORT_NS DI KERNEL 4.9 & Bypass Kbuild
+         if [ -f drivers/kernelsu/ksu.c ]; then
+             echo "Bypass MODULE_IMPORT_NS untuk Kernel 4.9..."
+             sed -i 's/MODULE_IMPORT_NS(.*);//g' drivers/kernelsu/ksu.c || true
+         fi
+
          if [ -f drivers/kernelsu/Kbuild ]; then
              sed -i 's/$(error/$(warning/g' drivers/kernelsu/Kbuild || true
          fi
-
+         
     - name: Tweak Defconfig
       run: |
          cd kernel-dir
