@@ -183,18 +183,21 @@ jobs:
              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
          fi
          
-         # 3. 🚀 FIX ERROR MODULE_IMPORT_NS & TWA_RESUME UNTUK KERNEL 4.9 MODIFIED
-         if [ -f drivers/kernelsu/ksu.c ]; then
-             echo "Bypass MODULE_IMPORT_NS untuk Kernel 4.9..."
-             sed -i 's/MODULE_IMPORT_NS(.*);//g' drivers/kernelsu/ksu.c || true
-         fi
-
-         # Ganti semua TWA_RESUME menjadi true di seluruh source KernelSU
-         echo "Bypass TWA_RESUME menjadi true untuk argumen ke-3 (bool)..."
-         find drivers/kernelsu/ -type f -name "*.c" -exec sed -i 's/TWA_RESUME/true/g' {} + || true
-
-         if [ -f drivers/kernelsu/Kbuild ]; then
-             sed -i 's/$(error/$(warning/g' drivers/kernelsu/Kbuild || true
+         # 3. 🚀 FIX ERROR MODULE_IMPORT_NS, TWA_RESUME, & MISSING HEADERS UNTUK KERNEL 4.9
+         if [ -d drivers/kernelsu ]; then
+             echo "Mengeksekusi Backport Fixes untuk Kernel 4.9..."
+             
+             # Fix 1: Bypass MODULE_IMPORT_NS
+             [ -f drivers/kernelsu/ksu.c ] && sed -i 's/MODULE_IMPORT_NS(.*);//g' drivers/kernelsu/ksu.c || true
+             
+             # Fix 2: Ganti TWA_RESUME menjadi true untuk argumen bool ke-3 task_work_add
+             find drivers/kernelsu/ -type f -name "*.c" -exec sed -i 's/TWA_RESUME/true/g' {} + || true
+             
+             # Fix 3: Ganti linux/sched/signal.h menjadi linux/sched.h
+             find drivers/kernelsu/ -type f -exec sed -i 's/linux\/sched\/signal\.h/linux\/sched\.h/g' {} + || true
+             
+             # Fix Kbuild Fatal Error
+             [ -f drivers/kernelsu/Kbuild ] && sed -i 's/$(error/$(warning/g' drivers/kernelsu/Kbuild || true
          fi
          
     - name: Tweak Defconfig
