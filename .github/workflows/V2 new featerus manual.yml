@@ -168,11 +168,10 @@ jobs:
 
          # 2. 🚀 INSTALL KSU/FORK SCRIPT
          if [ "${{ inputs.su_mode }}" = "kernelsunext" ]; then
-             # Jika input 'new' pilih legacy-susfs, jika 'old' pilih legacy
+             # Menggunakan legacy-susfs untuk 'new' dan legacy untuk 'old'
              BRANCH=$([ "${{ inputs.su_version }}" = "new" ] && echo "legacy-susfs" || echo "legacy")
              
              echo "Menginstal KernelSU-Next ($BRANCH untuk Kernel 4.9)..."
-             # Mengambil script dari branch 'next' sesuai dokumentasi, lalu menginstruksikannya untuk mengunduh branch legacy yang dipilih
              curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s $BRANCH
              
          elif [ "${{ inputs.su_mode }}" = "resukisu" ]; then
@@ -191,7 +190,9 @@ jobs:
          fi
          
          # 3. 🚀 DYNAMIC KSU DIR DETECTOR & KERNEL 4.9 FIXES
-         SU_DIR=$(find drivers/ -maxdepth 1 -type d -name "*su*" | head -n 1)
+         # PERBAIKAN: Menggunakan -iname agar case-insensitive (mendeteksi KernelSU maupun kernelsu)
+         SU_DIR=$(find drivers/ -maxdepth 1 -type d -iname "*su*" | head -n 1)
+         
          if [ ! -z "$SU_DIR" ]; then
              echo "✅ Modul SU Terdeteksi di $SU_DIR. Mengeksekusi Backport Fixes untuk Kernel 4.9..."
              
@@ -208,27 +209,6 @@ jobs:
              [ -f $SU_DIR/Kbuild ] && sed -i 's/$(error/$(warning/g' $SU_DIR/Kbuild || true
          else
              echo "ℹ️ Modul instalasi SU tidak ditemukan, skip backport fix."
-         fi
-         
-    - name: Tweak Defconfig
-      run: |
-         cd kernel-dir
-         TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
-         
-         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g" $TARGET_CONFIG || true
-         
-         if [ "${{ inputs.version_hash }}" = "enable" ]; then
-             sed -i "s/# CONFIG_LOCALVERSION_AUTO is not set/CONFIG_LOCALVERSION_AUTO=y/g" $TARGET_CONFIG || true
-             echo "CONFIG_LOCALVERSION_AUTO=y" >> $TARGET_CONFIG
-             rm -f .scmversion out/.scmversion
-             [ -f scripts/setlocalversion ] && sed -i 's/scm_version_string=""/scm_version_string="-dirty"/g' scripts/setlocalversion || true
-         else
-             sed -i "s/CONFIG_LOCALVERSION_AUTO=y/# CONFIG_LOCALVERSION_AUTO is not set/g" $TARGET_CONFIG || true
-             echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
-             echo "" > .scmversion
-             [ -f scripts/setlocalversion ] && sed -i 's/res="$res${scm:++}"/res="$res"/g' scripts/setlocalversion || true
-             [ -f scripts/setlocalversion ] && sed -i 's/echo "+"/echo ""/g' scripts/setlocalversion || true
-             [ -f scripts/setlocalversion ] && sed -i 's/scm_version_string="-dirty"/scm_version_string=""/g' scripts/setlocalversion || true
          fi
          
          for cfg in SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP; do
