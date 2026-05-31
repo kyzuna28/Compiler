@@ -1,5 +1,5 @@
 # Linex Project - Customized for Poco F1 (beryllium)
-name: se nse new clang include
+name: se nse new clang submodule
 run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.compiler }}
 
 on:
