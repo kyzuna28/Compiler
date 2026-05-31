@@ -135,10 +135,12 @@ jobs:
                  ln -sf /usr/bin/$cmd $HOME/tc/bin/$cmd
              done
          fi
-
-    # PERBAIKAN ADA DI BARIS BAWAH INI (--recurse-submodules ditambahkan)
+         
     - name: Clone Kernel Source
-      run: git clone --depth=1 --recurse-submodules ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+      run: |
+         git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+         cd kernel-dir
+         git submodule update --init --recursive
 
     - name: Tweak Defconfig
       run: |
