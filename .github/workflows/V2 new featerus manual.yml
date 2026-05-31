@@ -168,9 +168,12 @@ jobs:
 
          # 2. 🚀 INSTALL KSU/FORK SCRIPT
          if [ "${{ inputs.su_mode }}" = "kernelsunext" ]; then
-             BRANCH=$([ "${{ inputs.su_version }}" = "new" ] && echo "next" || echo "main")
-             echo "Menginstal KernelSU-Next ($BRANCH)..."
-             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/$BRANCH/kernel/setup.sh" | bash -s $BRANCH
+             # Jika input 'new' pilih legacy-susfs, jika 'old' pilih legacy
+             BRANCH=$([ "${{ inputs.su_version }}" = "new" ] && echo "legacy-susfs" || echo "legacy")
+             
+             echo "Menginstal KernelSU-Next ($BRANCH untuk Kernel 4.9)..."
+             # Mengambil script dari branch 'next' sesuai dokumentasi, lalu menginstruksikannya untuk mengunduh branch legacy yang dipilih
+             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s $BRANCH
              
          elif [ "${{ inputs.su_mode }}" = "resukisu" ]; then
              BRANCH=$([ "${{ inputs.su_version }}" = "new" ] && echo "dev" || echo "main")
