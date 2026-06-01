@@ -136,7 +136,7 @@ jobs:
              done
          fi
          
-    - name: Clone Kernel Source & Bypass KSU Submodule Check
+    - name: Clone Kernel Source
       run: |
          git config --global --add safe.directory '*'
          git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
@@ -144,15 +144,7 @@ jobs:
          cd kernel-dir
          git config --global --add safe.directory $(pwd)
          git submodule update --init --recursive
-         
-         # Script Anti-Error ReSukiSU Kbuild
-         for KBUILD_PATH in "KernelSU/kernel/Kbuild" "drivers/kernelsu/Kbuild" "drivers/KernelSU/Kbuild"; do
-             if [ -f "$KBUILD_PATH" ]; then
-                 echo "Ditemukan file Kbuild di $KBUILD_PATH. Menerapkan bypass otomatis..."
-                 sed -i 's/$(error.*git submodule.*)/# &/' "$KBUILD_PATH"
-                 echo "ccflags-y += -DKSU_VERSION=11482" >> "$KBUILD_PATH"
-             fi
-         done
+         # Bagian bypass sed & echo ccflags-y sudah dihapus agar versi git berjalan normal
 
     - name: Tweak Defconfig
       run: |
@@ -175,6 +167,12 @@ jobs:
          for cfg in SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP; do
              echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
          done
+
+         # ReSukiSU / KernelSU Wajib Aktif
+         echo "CONFIG_KSU=y" >> $TARGET_CONFIG
+         echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
+         echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
+         echo "CONFIG_KPROBE_EVENTS=y" >> $TARGET_CONFIG
          
          # ROM Tweaks
          if [ "${{ inputs.rom_optimization }}" = "MIUI" ]; then
