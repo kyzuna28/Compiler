@@ -87,7 +87,6 @@ jobs:
          sudo timedatectl set-timezone Asia/Jakarta
          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
          sudo docker image prune --all --force
-
     - name: Checkout Repository
       uses: actions/checkout@v4
 
@@ -102,7 +101,6 @@ jobs:
          else
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
-
     - name: Setup Swap Space (16GB)
       run: |
          sudo swapoff -a || true
@@ -111,7 +109,6 @@ jobs:
          sudo chmod 600 /mnt/swapfile
          sudo mkswap /mnt/swapfile
          sudo swapon /mnt/swapfile
-
     - name: Download Toolchain
       run: |
          rm -rf $HOME/tc $HOME/tmp-tc && mkdir -p $HOME/tc
@@ -143,31 +140,8 @@ jobs:
          
          cd kernel-dir
          git config --global --add safe.directory $(pwd)
-         
-         # Tarik semua submodule bawaan repo
          git submodule update --init --recursive
-         
-         # ==========================================================
-         # FAILSAFE KERNELSU: Bypass agar Kconfig dijamin tidak error
-         # ==========================================================
-         # Jika folder KernelSU di root kosong/gagal ditarik submodule, clone manual:
-         if [ ! -d "KernelSU/kernel" ]; then
-             echo "Submodule KernelSU ngadat, melakukan clone manual..."
-             rm -rf KernelSU
-             git clone https://github.com/sukisu-ultra/sukisu-ultra KernelSU
-             cd KernelSU
-             git checkout 8489c442c95bf148fa5b41cdbe3452d761718ead
-             cd ..
-         fi
-         
-         # Paksa bikin symlink di drivers saat workflow berjalan di server
-         mkdir -p drivers
-         cd drivers
-         rm -rf kernelsu
-         ln -sf ../KernelSU kernelsu
-         cd ..
-         # ==========================================================
-
+         # Bagian bypass sed & echo ccflags-y sudah dihapus agar versi git berjalan normal
     - name: Tweak Defconfig
       run: |
          cd kernel-dir
@@ -189,7 +163,6 @@ jobs:
          for cfg in SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP; do
              echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
          done
-
          # ReSukiSU / KernelSU Wajib Aktif
          echo "CONFIG_KSU=y" >> $TARGET_CONFIG
          echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
@@ -208,7 +181,6 @@ jobs:
              echo "CONFIG_MI_LOG_PRINT=n" >> $TARGET_CONFIG
              echo "CONFIG_MSM_SMD_DEBUG=n" >> $TARGET_CONFIG
              echo "CONFIG_DEBUG_INFO=n" >> $TARGET_CONFIG
-
          elif [ "${{ inputs.rom_optimization }}" = "AOSP" ]; then
              for cfg in KCAL_EQ SOUND_CONTROL USB_FASTCHARGE INPUT_TOUCHSCREEN DEVFREQ_GOV_MSM_ADRENO_TZ IOSCHED_ZEN DEFAULT_ZEN F2FS_FS EXFAT_FS SIMPLE_LMK TCP_CONG_BBR DEFAULT_BBR NET_SCH_FQ NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL; do
                  echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
@@ -238,7 +210,6 @@ jobs:
          else
              echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
-
     - name: Compile Kernel
       run: |
          cd kernel-dir
@@ -267,7 +238,6 @@ jobs:
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "Build Failed!" && tail -n 50 build.log && exit 1
          fi
-
     - name: Collect Output Binaries
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
@@ -284,9 +254,9 @@ jobs:
           fi
           
           [ -f "dtbo.img" ] && cp dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img || true
-
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/**
+        
