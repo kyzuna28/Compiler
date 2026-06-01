@@ -173,6 +173,7 @@ jobs:
          echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
          echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
          echo "CONFIG_KPROBE_EVENTS=y" >> $TARGET_CONFIG
+         echo "CONFIG_KSU_MANUAL_HOOK=y" >> $TARGET_CONFIG
          
          # ROM Tweaks
          if [ "${{ inputs.rom_optimization }}" = "MIUI" ]; then
