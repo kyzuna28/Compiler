@@ -1,31 +1,37 @@
 # Linex Project - Customized for Poco F1 (beryllium)
-name: se nse new feature manual
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | Hash:${{ inputs.version_hash }} | SU:${{ inputs.su_version }}
+name: se nse new feature submodule
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | APatch:${{ inputs.apatch_mode }} | Hash:${{ inputs.version_hash }}
 
 on:
   workflow_dispatch:
     inputs:
       ubuntu:
+        description: 'Ubuntu Version'
         default: 'ubuntu-24.04'
         required: true
         type: string
       zip_name:
+        description: 'Zip Output Name'
         default: 'Beryllium'
         required: true
         type: string
       kernel_name:
+        description: 'Kernel Name'
         default: 'cip128-st12'
         required: true
         type: string
       rom_type:
+        description: 'ROM Type'
         default: 'Kyy'
         required: true
         type: string
       project_name:
+        description: 'Project Name'
         default: 'selea×kyy'
         required: true
         type: string
       compiler:
+        description: 'Compiler Choice'
         default: 'debian-clang'
         required: true
         type: choice
@@ -36,6 +42,7 @@ on:
         - aosp-clang
         - debian-clang
       lto_mode:
+        description: 'LTO Optimization'
         default: 'disable'
         required: true
         type: choice
@@ -44,6 +51,7 @@ on:
         - full
         - thin
       rom_optimization:
+        description: 'ROM Specific Tweaks'
         default: 'AOSP'
         required: true
         type: choice
@@ -51,23 +59,16 @@ on:
         - AOSP
         - MIUI
         - disable
-      su_mode:
+      apatch_mode:
+        description: 'APatch Support (Kallsyms & OverlayFS)'
         default: 'disable'
         required: true
         type: choice
         options:
         - disable
-        - kernelsunext
-        - resukisu
-        - sukisu_ultra
-      su_version:
-        default: 'old'
-        required: true
-        type: choice
-        options:
-        - new
-        - old
+        - enable
       version_hash:
+        description: 'Include Version Hash'
         default: 'disable'
         required: true
         type: choice
@@ -75,14 +76,17 @@ on:
         - disable
         - enable
       kernel-url:
+        description: 'Kernel Source URL'
         default: 'https://github.com/kyzuna28/pixelos_beryllium_kernel.git'
         required: true
         type: string
       kernel-branch:
+        description: 'Kernel Source Branch'
         default: 'nse'
         required: true
         type: string
       kernel-config:
+        description: 'Kernel Defconfig'
         default: 'beryllium_defconfig'
         required: true
         type: string
@@ -149,72 +153,34 @@ jobs:
          fi
 
     - name: Clone Kernel Source
-      run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+      run: |
+         git config --global --add safe.directory '*'
+         git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+         
+         cd kernel-dir
+         git config --global --add safe.directory $(pwd)
+         git submodule update --init --recursive
+         # Bagian bypass sed & echo ccflags-y sudah dihapus agar versi git berjalan normal
 
-    - name: Apply Patch & Setup SU
+    - name: Apply Kernel Config
       run: |
          cd kernel-dir
+         TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
-         # 1. 🚀 CEK & EKSEKUSI PATCH MANUAL HOOK
-         if [ "${{ inputs.su_mode }}" != "disable" ]; then
-             if grep -q "ksu_handle" fs/exec.c; then
-                 echo "✅ Manual Hook KSU sudah terpasang di source code lu. Skip download patch biar nggak bentrok!"
-             else
-                 echo "⚠️ Manual Hook belum ada. Mengunduh dan menerapkan Patch 4.4/4.9..."
-                 wget https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
-                 patch -p1 -N --no-backup-if-mismatch < kernel-4.4_4.9.patch || true
-             fi
-         fi
-
-         # 2. 🚀 INSTALL KSU/FORK SCRIPT
-         if [ "${{ inputs.su_mode }}" = "kernelsunext" ]; then
-             # Menggunakan legacy-susfs untuk 'new' dan legacy untuk 'old'
-             BRANCH=$([ "${{ inputs.su_version }}" = "new" ] && echo "legacy-susfs" || echo "legacy")
-             
-             echo "Menginstal KernelSU-Next ($BRANCH untuk Kernel 4.9)..."
-             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s $BRANCH
-             
-         elif [ "${{ inputs.su_mode }}" = "resukisu" ]; then
-             BRANCH=$([ "${{ inputs.su_version }}" = "new" ] && echo "dev" || echo "main")
-             echo "Menginstal ResukiSU ($BRANCH)..."
-             curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/$BRANCH/kernel/setup.sh" | bash -s $BRANCH
-             
-         elif [ "${{ inputs.su_mode }}" = "sukisu_ultra" ]; then
-             BRANCH=$([ "${{ inputs.su_version }}" = "new" ] && echo "main" || echo "old")
-             echo "Menginstal SukiSU Ultra ($BRANCH)..."
-             curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/$BRANCH/kernel/setup.sh" | bash -s $BRANCH
-             
-         elif [ "${{ inputs.su_mode }}" = "disable" ]; then
-             echo "SU Disabled: Mencegah file not found ksu_trace.h..."
-             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
-         fi
-         
-         # 3. 🚀 DYNAMIC KSU DIR DETECTOR & KERNEL 4.9 FIXES
-         # PERBAIKAN: Menggunakan -iname agar case-insensitive (mendeteksi KernelSU maupun kernelsu)
-         SU_DIR=$(find drivers/ -maxdepth 1 -type d -iname "*su*" | head -n 1)
-         
-         if [ ! -z "$SU_DIR" ]; then
-             echo "✅ Modul SU Terdeteksi di $SU_DIR. Mengeksekusi Backport Fixes untuk Kernel 4.9..."
-             
-             # Fix 1: Bypass MODULE_IMPORT_NS
-             [ -f $SU_DIR/ksu.c ] && sed -i 's/MODULE_IMPORT_NS(.*);//g' $SU_DIR/ksu.c || true
-             
-             # Fix 2: Ganti TWA_RESUME menjadi true
-             find $SU_DIR/ -type f -name "*.c" -exec sed -i 's/TWA_RESUME/true/g' {} + || true
-             
-             # Fix 3: Ganti linux/sched/signal.h menjadi linux/sched.h
-             find $SU_DIR/ -type f -exec sed -i 's/linux\/sched\/signal\.h/linux\/sched\.h/g' {} + || true
-             
-             # Fix Kbuild Fatal Error
-             [ -f $SU_DIR/Kbuild ] && sed -i 's/$(error/$(warning/g' $SU_DIR/Kbuild || true
-         else
-             echo "ℹ️ Modul instalasi SU tidak ditemukan, skip backport fix."
-         fi
-         
+         # Base Configs
          for cfg in SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP; do
              echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
          done
          
+         # APatch Support
+         if [ "${{ inputs.apatch_mode }}" = "enable" ]; then
+             echo "Mengaktifkan konfigurasi dukungan APatch..."
+             for cfg in OVERLAY_FS KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE; do
+                 echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
+             done
+         fi
+         
+         # ROM Optimization
          if [ "${{ inputs.rom_optimization }}" = "MIUI" ]; then
              for cfg in KCAL_EQ SOUND_CONTROL USB_FASTCHARGE DEVFREQ_GOV_MSM_ADRENO_TZ ZRAM ZCOMP CRYPTO_ZSTD ZRAM_DEF_COMP_ZSTD SIMPLE_LMK IOSCHED_MAPLE DEFAULT_MAPLE F2FS_FS EXFAT_FS BOEFFLA_WL_BLOCKER STATE_NOTIFIER POWER_SUSPEND POWER_SUSPEND_STATE NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL; do
                  echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
@@ -237,29 +203,7 @@ jobs:
              echo "CONFIG_DEBUG_INFO=n" >> $TARGET_CONFIG
          fi
          
-         if [ "${{ inputs.su_mode }}" != "disable" ]; then
-             echo "Mengaktifkan KSU & MANUAL_HOOK sesuai instruksi RKSUORG..."
-             
-             # 🚀 CRITICAL FIX: DONT ENABLE CONFIG_KPROBES!
-             sed -i "s/CONFIG_KPROBES=y/# CONFIG_KPROBES is not set/g" $TARGET_CONFIG || true
-             sed -i "s/CONFIG_HAVE_KPROBES=y/# CONFIG_HAVE_KPROBES is not set/g" $TARGET_CONFIG || true
-             sed -i "s/CONFIG_KPROBE_EVENTS=y/# CONFIG_KPROBE_EVENTS is not set/g" $TARGET_CONFIG || true
-             echo "# CONFIG_KPROBES is not set" >> $TARGET_CONFIG
-             echo "# CONFIG_KPROBE_EVENTS is not set" >> $TARGET_CONFIG
-             
-             # 🚀 Add Config
-             echo "CONFIG_KSU_MANUAL_HOOK=y" >> $TARGET_CONFIG
-             echo "CONFIG_KSU=y" >> $TARGET_CONFIG
-         fi
-
-         if [ "${{ inputs.su_mode }}" = "disable" ]; then
-             echo "# CONFIG_KSU is not set" >> $TARGET_CONFIG
-             echo "CONFIG_KSU=n" >> $TARGET_CONFIG
-             for cfg in OVERLAY_FS KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE; do
-                 echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
-             done
-         fi
-         
+         # LTO Configuration
          for lto in LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE; do
              sed -i "s/CONFIG_$lto=.*/# CONFIG_$lto is not set/g" $TARGET_CONFIG || true
          done
