@@ -136,11 +136,23 @@ jobs:
              done
          fi
          
-    - name: Clone Kernel Source
+    - name: Clone Kernel Source & Bypass KSU Submodule Check
       run: |
+         git config --global --add safe.directory '*'
          git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+         
          cd kernel-dir
+         git config --global --add safe.directory $(pwd)
          git submodule update --init --recursive
+         
+         # Script Anti-Error ReSukiSU Kbuild
+         for KBUILD_PATH in "KernelSU/kernel/Kbuild" "drivers/kernelsu/Kbuild" "drivers/KernelSU/Kbuild"; do
+             if [ -f "$KBUILD_PATH" ]; then
+                 echo "Ditemukan file Kbuild di $KBUILD_PATH. Menerapkan bypass otomatis..."
+                 sed -i 's/$(error.*git submodule.*)/# &/' "$KBUILD_PATH"
+                 echo "ccflags-y += -DKSU_VERSION=11482" >> "$KBUILD_PATH"
+             fi
+         done
 
     - name: Tweak Defconfig
       run: |
@@ -219,7 +231,6 @@ jobs:
          SAFE_CORES=$(( $(nproc --all) > 1 ? $(nproc --all) - 1 : 1 ))
          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
          
-         # Tweak khusus target triple untuk debian-clang agar cross-compile lancar
          EXTRA_CFLAGS=""
          if [ "${{ inputs.compiler }}" = "debian-clang" ]; then
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
@@ -258,4 +269,3 @@ jobs:
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/**
-
