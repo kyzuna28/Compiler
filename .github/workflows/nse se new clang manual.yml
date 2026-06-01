@@ -1,35 +1,37 @@
 # Linex Project - Customized for Poco F1 (beryllium)
-name: se nse new clang include
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.compiler }}
+name: se nse new feature no submodule
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | APatch:${{ inputs.apatch_mode }} | Hash:${{ inputs.version_hash }}
 
 on:
   workflow_dispatch:
     inputs:
       ubuntu:
+        description: 'Ubuntu Version'
         default: 'ubuntu-24.04'
         required: true
         type: string
       zip_name:
+        description: 'Zip Output Name'
         default: 'Beryllium'
         required: true
         type: string
-      kernel_version:
-        default: 'original'
-        required: true
-        type: string
       kernel_name:
+        description: 'Kernel Name'
         default: 'cip128-st12'
         required: true
         type: string
       rom_type:
+        description: 'ROM Type'
         default: 'Kyy'
         required: true
         type: string
       project_name:
+        description: 'Project Name'
         default: 'selea×kyy'
         required: true
         type: string
       compiler:
+        description: 'Compiler Choice'
         default: 'debian-clang'
         required: true
         type: choice
@@ -40,6 +42,7 @@ on:
         - aosp-clang
         - debian-clang
       lto_mode:
+        description: 'LTO Optimization'
         default: 'disable'
         required: true
         type: choice
@@ -48,6 +51,7 @@ on:
         - full
         - thin
       rom_optimization:
+        description: 'ROM Specific Tweaks'
         default: 'AOSP'
         required: true
         type: choice
@@ -56,21 +60,33 @@ on:
         - MIUI
         - disable
       apatch_mode:
+        description: 'APatch Support (Kallsyms & OverlayFS)'
         default: 'disable'
         required: true
         type: choice
         options:
         - disable
-        - apatch
+        - enable
+      version_hash:
+        description: 'Include Version Hash'
+        default: 'disable'
+        required: true
+        type: choice
+        options:
+        - disable
+        - enable
       kernel-url:
+        description: 'Kernel Source URL'
         default: 'https://github.com/kyzuna28/pixelos_beryllium_kernel.git'
         required: true
         type: string
       kernel-branch:
-        default: 'susfsarrow'
+        description: 'Kernel Source Branch'
+        default: 'nse'
         required: true
         type: string
       kernel-config:
+        description: 'Kernel Defconfig'
         default: 'beryllium_defconfig'
         required: true
         type: string
@@ -94,7 +110,7 @@ jobs:
     - name: Install Dependencies
       run: |
          sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch
          
          if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
              sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || true
@@ -139,29 +155,25 @@ jobs:
     - name: Clone Kernel Source
       run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
 
-    - name: Tweak Defconfig
+    - name: Apply Kernel Config
       run: |
          cd kernel-dir
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
-         if [ "${{ inputs.kernel_version }}" != "original" ] && [ "${{ inputs.kernel_version }}" != "" ]; then
-             sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
-             sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
-             sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
-         fi
-         
-         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g" $TARGET_CONFIG || true
-         sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=y/g" $TARGET_CONFIG || true
-         echo "CONFIG_LOCALVERSION_AUTO=y" >> $TARGET_CONFIG
-         rm -f .scmversion out/.scmversion
-         [ -f scripts/setlocalversion ] && sed -i 's/scm_version_string=""/scm_version_string="-dirty"/g' scripts/setlocalversion || true
-         
-         # Base Requirements
+         # Base Configs
          for cfg in SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP; do
              echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
          done
          
-         # ROM Tweaks
+         # APatch Support
+         if [ "${{ inputs.apatch_mode }}" = "enable" ]; then
+             echo "Mengaktifkan konfigurasi dukungan APatch..."
+             for cfg in OVERLAY_FS KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE; do
+                 echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
+             done
+         fi
+         
+         # ROM Optimization
          if [ "${{ inputs.rom_optimization }}" = "MIUI" ]; then
              for cfg in KCAL_EQ SOUND_CONTROL USB_FASTCHARGE DEVFREQ_GOV_MSM_ADRENO_TZ ZRAM ZCOMP CRYPTO_ZSTD ZRAM_DEF_COMP_ZSTD SIMPLE_LMK IOSCHED_MAPLE DEFAULT_MAPLE F2FS_FS EXFAT_FS BOEFFLA_WL_BLOCKER STATE_NOTIFIER POWER_SUSPEND POWER_SUSPEND_STATE NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL; do
                  echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
@@ -184,14 +196,7 @@ jobs:
              echo "CONFIG_DEBUG_INFO=n" >> $TARGET_CONFIG
          fi
          
-         # APatch Support
-         if [ "${{ inputs.apatch_mode }}" = "apatch" ]; then
-             for cfg in OVERLAY_FS KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE; do
-                 echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
-             done
-         fi
-         
-         # LTO Optimization
+         # LTO Configuration
          for lto in LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE; do
              sed -i "s/CONFIG_$lto=.*/# CONFIG_$lto is not set/g" $TARGET_CONFIG || true
          done
@@ -216,7 +221,6 @@ jobs:
          SAFE_CORES=$(( $(nproc --all) > 1 ? $(nproc --all) - 1 : 1 ))
          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
          
-         # Tweak khusus target triple untuk debian-clang agar cross-compile lancar
          EXTRA_CFLAGS=""
          if [ "${{ inputs.compiler }}" = "debian-clang" ]; then
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
