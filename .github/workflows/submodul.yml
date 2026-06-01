@@ -143,8 +143,30 @@ jobs:
          
          cd kernel-dir
          git config --global --add safe.directory $(pwd)
+         
+         # Tarik semua submodule bawaan repo
          git submodule update --init --recursive
-         # Bagian bypass sed & echo ccflags-y sudah dihapus agar versi git berjalan normal
+         
+         # ==========================================================
+         # FAILSAFE KERNELSU: Bypass agar Kconfig dijamin tidak error
+         # ==========================================================
+         # Jika folder KernelSU di root kosong/gagal ditarik submodule, clone manual:
+         if [ ! -d "KernelSU/kernel" ]; then
+             echo "Submodule KernelSU ngadat, melakukan clone manual..."
+             rm -rf KernelSU
+             git clone https://github.com/sukisu-ultra/sukisu-ultra KernelSU
+             cd KernelSU
+             git checkout 8489c442c95bf148fa5b41cdbe3452d761718ead
+             cd ..
+         fi
+         
+         # Paksa bikin symlink di drivers saat workflow berjalan di server
+         mkdir -p drivers
+         cd drivers
+         rm -rf kernelsu
+         ln -sf ../KernelSU kernelsu
+         cd ..
+         # ==========================================================
 
     - name: Tweak Defconfig
       run: |
