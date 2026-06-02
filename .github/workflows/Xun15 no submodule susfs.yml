@@ -165,14 +165,14 @@ jobs:
              echo '    echo "Thread model: posix"' >> $HOME/tc/bin/clang
              echo '    echo "InstalledDir: /usr/lib/llvm-21/bin"' >> $HOME/tc/bin/clang
              echo '    exit 0' >> $HOME/tc/bin/clang
-             echo 'fi' >> $HOME/tc/bin/clang
+             fi
              echo 'exec /usr/bin/clang-21 "$@"' >> $HOME/tc/bin/clang
              
              echo '#!/bin/bash' > $HOME/tc/bin/ld.lld
              echo 'if [[ "$1" == "--version" || "$1" == "-v" ]]; then' >> $HOME/tc/bin/ld.lld
              echo '    echo "Debian LLD 21.1.8"' >> $HOME/tc/bin/ld.lld
              echo '    exit 0' >> $HOME/tc/bin/ld.lld
-             echo 'fi' >> $HOME/tc/bin/ld.lld
+             fi
              echo 'exec /usr/bin/ld.lld-21 "$@"' >> $HOME/tc/bin/ld.lld
              
              chmod +x $HOME/tc/bin/clang
@@ -222,9 +222,9 @@ jobs:
          CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
          echo "Hasil format string compiler baru: $CUSTOM_COMPILER_STRING"
          
-         # Suntik paksa string compiler baru ke dalam mkcompile_h agar terbaca utuh di APatch
-         sed -i "s/COMPILER=.*/COMPILER=\"$CUSTOM_COMPILER_STRING\"/g" scripts/mkcompile_h || true
-         sed -i 's/echo \\"#define LINUX_COMPILER.*/echo \\"#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"\\"/g' scripts/mkcompile_h || true
+         # Suntik paksa string compiler baru ke dalam mkcompile_h agar terbaca utuh di APatch (Fix Regex)
+         sed -i -E "s/echo [\'\"]?\#define LINUX_COMPILER.*/echo \"#define LINUX_COMPILER \\\"$CUSTOM_COMPILER_STRING\\\"\"/g" scripts/mkcompile_h || true
+         sed -i "s|COMPILER=.*|COMPILER=\"$CUSTOM_COMPILER_STRING\"|g" scripts/mkcompile_h || true
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
@@ -305,13 +305,13 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # LLVM_IAS=0 untuk membasmi broken pipe
-         # KCFLAGS dengan argumen spesifik untuk membungkam log warning tanpa memicu error
+         # --- FIX UTAMA: LLVM_IAS=1 (Fix Broken Pipe) & Flag Pembungkam Warning Baru ---
          make -j$(nproc --all) ARCH=arm64 O=../out \
-              CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=0 \
+              CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
               CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
               LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-              KCFLAGS="-Qunused-arguments -Wno-unused-command-line-argument $EXTRA_CFLAGS" \
+              KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING" \
+              KCFLAGS="-w -Wno-unused-command-line-argument -Wno-error -fno-builtin $EXTRA_CFLAGS" \
               Image.gz Image.gz-dtb dtbs
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
