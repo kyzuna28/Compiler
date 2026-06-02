@@ -82,7 +82,7 @@ on:
         type: string
       kernel-branch:
         description: 'Kernel Source Branch'
-        default: 'xun15'
+        default: '15s'
         required: true
         type: string
       kernel-config:
