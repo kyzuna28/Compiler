@@ -1,5 +1,5 @@
 # Linex Project - Customized for Poco F1 (beryllium)
-name: no submodule
+name: susfs no submodule
 run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | APatch:${{ inputs.apatch_mode }} | Hash:${{ inputs.version_hash }}
 
 on:
@@ -12,17 +12,14 @@ on:
         type: string
       zip_name:
         description: 'Zip Output Name'
-        default: 'Xun15'
         required: true
         type: string
       kernel_name:
         description: 'Kernel Name'
-        default: 'XuN®'
         required: true
         type: string
       rom_type:
         description: 'ROM Type'
-        default: 'カキクx1'
         required: true
         type: string
       project_name:
@@ -32,7 +29,7 @@ on:
         type: string
       compiler:
         description: 'Compiler Choice'
-        default: 'debian-clang'
+        default: 'aosp-clang'
         required: true
         type: choice
         options:
@@ -61,7 +58,7 @@ on:
         - MIUI
         - disable
       apatch_mode:
-        description: 'APatch Support (Kallsyms & OverlayFS)'
+        description: 'APatch Support'
         default: 'disable'
         required: true
         type: choice
@@ -78,12 +75,11 @@ on:
         - enable
       kernel-url:
         description: 'Kernel Source URL'
-        default: 'https://github.com/kyzuna28/pixelos_beryllium_kernel.git'
+        default: 'https://github.com/kyzuna28/xun15.git'
         required: true
         type: string
       kernel-branch:
         description: 'Kernel Source Branch'
-        default: 'nse'
         required: true
         type: string
       kernel-config:
