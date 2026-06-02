@@ -188,7 +188,7 @@ jobs:
     - name: Clone Kernel Source
       run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
 
-        - name: Apply Kernel Config
+    - name: Apply Kernel Config
       run: |
          cd kernel-dir
          
