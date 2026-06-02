@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
 name: susfs no submodule xun15
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | APatch:${{ inputs.rom_type }} | Hash:${{ inputs.version_hash }}
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.version_hash }}
 
 on:
   workflow_dispatch:
