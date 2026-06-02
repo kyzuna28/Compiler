@@ -12,7 +12,7 @@ on:
         type: string
       zip_name:
         description: 'Zip Output Name'
-        default: 'Beryllium'
+        default: 'Xun15'
         required: true
         type: string
       kernel_name:
