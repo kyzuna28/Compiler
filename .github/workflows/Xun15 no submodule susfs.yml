@@ -1,6 +1,6 @@
-# Linex Project - Customized for Poco F1 (beryllium)
+# Kyzuna Project - Customized for Poco F1 (beryllium)
 name: susfs no submodule xun15
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | APatch:${{ inputs.apatch_mode }} | Hash:${{ inputs.version_hash }}
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | APatch:${{ inputs.rom_type }} | Hash:${{ inputs.version_hash }}
 
 on:
   workflow_dispatch:
@@ -147,7 +147,7 @@ jobs:
              curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
              chmod +x antman
              ./antman -S
-             # Alternatif jika antman gagal: git clone --depth=1 https://gitlab.com/clangsantoni/neutron-clang.git $HOME/tc
+             cd $GITHUB_WORKSPACE
          elif [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
              git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 $HOME/tc
          elif [ "${{ inputs.compiler }}" = "debian-clang" ]; then
@@ -188,11 +188,19 @@ jobs:
     - name: Clone Kernel Source
       run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
 
-    - name: Apply Kernel Config
+        - name: Apply Kernel Config
       run: |
          cd kernel-dir
          
-         # --- BERSIHKAN NAMA BAWAAN KERNEL DARI SOURCE ---
+         find . -type f \( -name "Makefile*" -o -name "*.mk" -o -name "*.config" -o -name "*defconfig" \) -exec sed -i 's/-mllvm -polly[-a-zA-Z0-9_=]*//g' {} + || true
+         find . -type f \( -name "Makefile*" -o -name "*.mk" -o -name "*.config" -o -name "*defconfig" \) -exec sed -i 's/-polly[-a-zA-Z0-9_=]*//g' {} + || true
+         
+         # --- BUNGKAM WARNING LANGSUNG DARI AKAR MAKEFILE ---
+         echo "Membunuh semua warning compiler dari Makefile utama..."
+         sed -i 's/KBUILD_CFLAGS   := /KBUILD_CFLAGS   := -w -Qunused-arguments -Wno-error /g' Makefile || true
+         sed -i 's/-Wall//g' Makefile || true
+         sed -i 's/-Werror//g' Makefile || true
+         
          echo "Membersihkan EXTRAVERSION dan LOCALVERSION bawaan..."
          sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' arch/arm64/configs/${{ inputs.kernel-config }} || true
@@ -223,22 +231,21 @@ jobs:
          CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
          echo "Hasil format string compiler baru: $CUSTOM_COMPILER_STRING"
          
+         # --- INJEKSI BRUTAL NAMA COMPILER KE SCRIPT KERNEL ---
          sed -i "s/COMPILER=.*/COMPILER=\"$CUSTOM_COMPILER_STRING\"/g" scripts/mkcompile_h || true
+         sed -i 's/echo \\"#define LINUX_COMPILER.*/echo \\"#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"\\"/g' scripts/mkcompile_h || true
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
          # Base Configs
+         echo "CONFIG_AUDIO_ELLIPTIC=n" >> $TARGET_CONFIG
+         echo "CONFIG_EFI=n" >> $TARGET_CONFIG
+         echo "CONFIG_EFI_STUB=n" >> $TARGET_CONFIG
+         echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
+         
          for cfg in SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP; do
              echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
          done
-         
-         # APatch Support
-         if [ "${{ inputs.apatch_mode }}" = "enable" ]; then
-             echo "Mengaktifkan konfigurasi dukungan APatch..."
-             for cfg in OVERLAY_FS KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE; do
-                 echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
-             done
-         fi
          
          # ROM Optimization
          if [ "${{ inputs.rom_optimization }}" = "MIUI" ]; then
@@ -275,6 +282,16 @@ jobs:
              echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
 
+         # Rooting / APatch Core Configurations
+         if [ "${{ inputs.apatch_mode }}" = "true" ]; then
+             echo "CONFIG_KALLSYMS=y" >> $TARGET_CONFIG
+             echo "CONFIG_KALLSYMS_ALL=y" >> $TARGET_CONFIG
+             echo "CONFIG_KALLSYMS_BASE_RELATIVE=y" >> $TARGET_CONFIG
+             echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
+             echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
+             echo "CONFIG_OVERLAY_FS=y" >> $TARGET_CONFIG
+         fi
+
     - name: Compile Kernel
       run: |
          cd kernel-dir
@@ -282,7 +299,6 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
          
-         # Logika untuk menyembunyikan / memunculkan Git Hash & -dirty
          if [ "${{ inputs.version_hash }}" = "disable" ]; then
              echo "Mendisable git hash dan -dirty..."
              echo "" > .scmversion
@@ -293,8 +309,6 @@ jobs:
          fi
          
          rm -rf ../out && mkdir -p ../out
-         
-         # Jalankan defconfig senyap tanpa warning override symbol ke terminal
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }} > /dev/null 2>&1
          
          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
@@ -304,12 +318,12 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # Kompilasi dengan pembungkaman total warning (-w -Qunused-arguments) dan pembatasan aman -j4
-         make -j4 ARCH=arm64 O=../out \
-              CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
+         # PENTING: LLVM_IAS dimatikan (LLVM_IAS=0) agar module arm64/crypto tidak membuat Broken Pipe!
+         make -j$(nproc --all) ARCH=arm64 O=../out \
+              CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=0 \
               CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
               LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-              KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
+              KCFLAGS="-w -Wno-error -Qunused-arguments -fno-builtin $EXTRA_CFLAGS" \
               Image.gz Image.gz-dtb dtbs
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
