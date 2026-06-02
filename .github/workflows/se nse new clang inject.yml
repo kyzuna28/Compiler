@@ -11,7 +11,7 @@ on:
         type: string
       zip_name:
         description: 'Nama File Akhir'
-        default: 'Beryllium'
+        default: 'Team'
         required: true
         type: string
       kernel_version:
