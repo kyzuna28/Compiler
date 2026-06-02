@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
 name: susfs no submodule xun15
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.version_hash }}
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }}
 
 on:
   workflow_dispatch:
@@ -165,14 +165,14 @@ jobs:
              echo '    echo "Target: aarch64-unknown-linux-gnu"' >> $HOME/tc/bin/clang
              echo '    echo "Thread model: posix"' >> $HOME/tc/bin/clang
              echo '    echo "InstalledDir: /usr/lib/llvm-21/bin"' >> $HOME/tc/bin/clang
-             echo '    exit 0' >> $HOME/tc/bin/clang
+             exit 0
              echo 'fi' >> $HOME/tc/bin/clang
              echo 'exec /usr/bin/clang-21 "$@"' >> $HOME/tc/bin/clang
              
              echo '#!/bin/bash' > $HOME/tc/bin/ld.lld
              echo 'if [[ "$1" == "--version" || "$1" == "-v" ]]; then' >> $HOME/tc/bin/ld.lld
              echo '    echo "Debian LLD 21.1.8"' >> $HOME/tc/bin/ld.lld
-             echo '    exit 0' >> $HOME/tc/bin/ld.lld
+             exit 0
              echo 'fi' >> $HOME/tc/bin/ld.lld
              echo 'exec /usr/bin/ld.lld-21 "$@"' >> $HOME/tc/bin/ld.lld
              
@@ -282,8 +282,8 @@ jobs:
              echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
 
-         # Rooting / APatch Core Configurations
-         if [ "${{ inputs.apatch_mode }}" = "true" ]; then
+         # Rooting / APatch Core Configurations (Fix: disesuaikan dari 'true' menjadi 'enable')
+         if [ "${{ inputs.apatch_mode }}" = "enable" ]; then
              echo "CONFIG_KALLSYMS=y" >> $TARGET_CONFIG
              echo "CONFIG_KALLSYMS_ALL=y" >> $TARGET_CONFIG
              echo "CONFIG_KALLSYMS_BASE_RELATIVE=y" >> $TARGET_CONFIG
@@ -309,7 +309,9 @@ jobs:
          fi
          
          rm -rf ../out && mkdir -p ../out
-         make ARCH=arm64 O=../out ${{ inputs.kernel-config }} > /dev/null 2>&1
+         
+         # Tambahkan PATH dan parameter compiler penuh saat generate defconfig agar deteksi fitur tidak salah arah
+         make ARCH=arm64 O=../out ${{ inputs.kernel-config }} CC=clang HOSTCC=clang CROSS_COMPILE=aarch64-linux-gnu-
          
          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
          
@@ -318,9 +320,9 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # PENTING: LLVM_IAS dimatikan (LLVM_IAS=0) agar module arm64/crypto tidak membuat Broken Pipe!
+         # Fix: Ditambahkan HOSTCC=clang agar host tools dikompilasi dengan compiler yang selaras
          make -j$(nproc --all) ARCH=arm64 O=../out \
-              CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=0 \
+              CC=clang HOSTCC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=0 \
               CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
               LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
               KCFLAGS="-w -Wno-error -Qunused-arguments -fno-builtin $EXTRA_CFLAGS" \
