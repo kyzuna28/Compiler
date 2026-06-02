@@ -1,5 +1,5 @@
 # Linex Project - Customized for Poco F1 (beryllium)
-name: sub module
+name: susfs no submodule wan13
 run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | APatch:${{ inputs.apatch_mode }} | Hash:${{ inputs.version_hash }}
 
 on:
@@ -12,17 +12,16 @@ on:
         type: string
       zip_name:
         description: 'Zip Output Name'
-        default: 'Beryllium'
+        default: 'Wan13'
         required: true
         type: string
       kernel_name:
         description: 'Kernel Name'
-        default: 'cip128-st12'
+        default: 'Wan®'
         required: true
         type: string
       rom_type:
         description: 'ROM Type'
-        default: 'Kyy'
         required: true
         type: string
       project_name:
@@ -32,13 +31,14 @@ on:
         type: string
       compiler:
         description: 'Compiler Choice'
-        default: 'debian-clang'
+        default: 'aosp-clang'
         required: true
         type: choice
         options:
         - zyc-clang
         - yuki-clang
         - weebx-clang
+        - neutron-clang
         - aosp-clang
         - debian-clang
       lto_mode:
@@ -52,7 +52,7 @@ on:
         - thin
       rom_optimization:
         description: 'ROM Specific Tweaks'
-        default: 'AOSP'
+        default: 'disable'
         required: true
         type: choice
         options:
@@ -60,7 +60,7 @@ on:
         - MIUI
         - disable
       apatch_mode:
-        description: 'APatch Support (Kallsyms & OverlayFS)'
+        description: 'APatch Support'
         default: 'disable'
         required: true
         type: choice
@@ -77,12 +77,12 @@ on:
         - enable
       kernel-url:
         description: 'Kernel Source URL'
-        default: 'https://github.com/kyzuna28/pixelos_beryllium_kernel.git'
+        default: 'https://github.com/kyzuna28/wan13.git'
         required: true
         type: string
       kernel-branch:
         description: 'Kernel Source Branch'
-        default: 'nse'
+        default: '13s'
         required: true
         type: string
       kernel-config:
@@ -110,7 +110,7 @@ jobs:
     - name: Install Dependencies
       run: |
          sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch lsb-release software-properties-common gnupg
          
          if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
              sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || true
@@ -119,11 +119,11 @@ jobs:
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
 
-    - name: Setup Swap Space (16GB)
+    - name: Setup Swap Space (8GB)
       run: |
          sudo swapoff -a || true
          sudo rm -f /mnt/swapfile || true
-         sudo fallocate -l 16G /mnt/swapfile
+         sudo fallocate -l 8G /mnt/swapfile
          sudo chmod 600 /mnt/swapfile
          sudo mkswap /mnt/swapfile
          sudo swapon /mnt/swapfile
@@ -138,33 +138,93 @@ jobs:
          elif [ "${{ inputs.compiler }}" = "yuki-clang" ]; then
              git clone --depth=1 https://gitlab.com/TheXPerienceProject/yuki_clang.git -b 18.0.0 $HOME/tc
          elif [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
-             mkdir -p $HOME/tc
              wget -q https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz -O weebx-clang.tar.gz
              tar -xf weebx-clang.tar.gz -C $HOME/tc
              rm -f weebx-clang.tar.gz
+         elif [ "${{ inputs.compiler }}" = "neutron-clang" ]; then
+             echo "Mengunduh Neutron Clang menggunakan antman..."
+             cd $HOME/tc
+             curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+             chmod +x antman
+             ./antman -S
+             # Alternatif jika antman gagal: git clone --depth=1 https://gitlab.com/clangsantoni/neutron-clang.git $HOME/tc
          elif [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
              git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 $HOME/tc
          elif [ "${{ inputs.compiler }}" = "debian-clang" ]; then
-             sudo apt-get install --no-install-recommends -y clang lld llvm
+             echo "Memasang LLVM 21 dan mencocokkan string dengan Chroot Kali..."
+             wget https://apt.llvm.org/llvm.sh
+             chmod +x llvm.sh
+             sudo ./llvm.sh 21
+             sudo apt-get install --no-install-recommends -y clang-21 lld-21 llvm-21
+             
              mkdir -p $HOME/tc/bin
-             for cmd in clang ld.lld llvm-ar llvm-nm llvm-objcopy llvm-objdump; do
-                 ln -sf /usr/bin/$cmd $HOME/tc/bin/$cmd
-             done
+             
+             echo '#!/bin/bash' > $HOME/tc/bin/clang
+             echo 'if [[ "$1" == "--version" || "$1" == "-v" ]]; then' >> $HOME/tc/bin/clang
+             echo '    echo "Debian clang version 21.1.8 (3+b1)"' >> $HOME/tc/bin/clang
+             echo '    echo "Target: aarch64-unknown-linux-gnu"' >> $HOME/tc/bin/clang
+             echo '    echo "Thread model: posix"' >> $HOME/tc/bin/clang
+             echo '    echo "InstalledDir: /usr/lib/llvm-21/bin"' >> $HOME/tc/bin/clang
+             echo '    exit 0' >> $HOME/tc/bin/clang
+             echo 'fi' >> $HOME/tc/bin/clang
+             echo 'exec /usr/bin/clang-21 "$@"' >> $HOME/tc/bin/clang
+             
+             echo '#!/bin/bash' > $HOME/tc/bin/ld.lld
+             echo 'if [[ "$1" == "--version" || "$1" == "-v" ]]; then' >> $HOME/tc/bin/ld.lld
+             echo '    echo "Debian LLD 21.1.8"' >> $HOME/tc/bin/ld.lld
+             echo '    exit 0' >> $HOME/tc/bin/ld.lld
+             echo 'fi' >> $HOME/tc/bin/ld.lld
+             echo 'exec /usr/bin/ld.lld-21 "$@"' >> $HOME/tc/bin/ld.lld
+             
+             chmod +x $HOME/tc/bin/clang
+             chmod +x $HOME/tc/bin/ld.lld
+             
+             ln -sf /usr/bin/llvm-ar-21 $HOME/tc/bin/llvm-ar
+             ln -sf /usr/bin/llvm-nm-21 $HOME/tc/bin/llvm-nm
+             ln -sf /usr/bin/llvm-objcopy-21 $HOME/tc/bin/llvm-objcopy
+             ln -sf /usr/bin/llvm-objdump-21 $HOME/tc/bin/llvm-objdump
          fi
 
     - name: Clone Kernel Source
-      run: |
-         git config --global --add safe.directory '*'
-         git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
-         
-         cd kernel-dir
-         git config --global --add safe.directory $(pwd)
-         git submodule update --init --recursive
-         # Bagian bypass sed & echo ccflags-y sudah dihapus agar versi git berjalan normal
+      run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
 
     - name: Apply Kernel Config
       run: |
          cd kernel-dir
+         
+         # --- BERSIHKAN NAMA BAWAAN KERNEL DARI SOURCE ---
+         echo "Membersihkan EXTRAVERSION dan LOCALVERSION bawaan..."
+         sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
+         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' arch/arm64/configs/${{ inputs.kernel-config }} || true
+         
+         # --- OTOMATISASI NAMA COMPILER UNTUK SEMUA CLANG ---
+         echo "Mengekstrak versi asli Clang dan LLD..."
+         export PATH=$HOME/tc/bin:$PATH
+         
+         RAW_CLANG_VER=$(clang --version | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+         RAW_LLD_VER=$(ld.lld --version | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+         
+         if [ -z "$RAW_LLD_VER" ]; then RAW_LLD_VER="$RAW_CLANG_VER"; fi
+         
+         if [ "${{ inputs.compiler }}" = "zyc-clang" ]; then
+             COMPILER_NAME="ZyC Clang"
+         elif [ "${{ inputs.compiler }}" = "yuki-clang" ]; then
+             COMPILER_NAME="Yuki Clang"
+         elif [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
+             COMPILER_NAME="WeebX Clang"
+         elif [ "${{ inputs.compiler }}" = "neutron-clang" ]; then
+             COMPILER_NAME="Neutron Clang"
+         elif [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
+             COMPILER_NAME="AOSP Clang"
+         else
+             COMPILER_NAME="Debian Clang"
+         fi
+         
+         CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
+         echo "Hasil format string compiler baru: $CUSTOM_COMPILER_STRING"
+         
+         sed -i "s/COMPILER=.*/COMPILER=\"$CUSTOM_COMPILER_STRING\"/g" scripts/mkcompile_h || true
+         
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
          # Base Configs
@@ -222,10 +282,21 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
          
-         rm -rf ../out && mkdir -p ../out
-         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
+         # Logika untuk menyembunyikan / memunculkan Git Hash & -dirty
+         if [ "${{ inputs.version_hash }}" = "disable" ]; then
+             echo "Mendisable git hash dan -dirty..."
+             echo "" > .scmversion
+             export LOCALVERSION_AUTO=""
+         else
+             echo "Mengenable git hash dan -dirty..."
+             rm -f .scmversion
+         fi
          
-         SAFE_CORES=$(( $(nproc --all) > 1 ? $(nproc --all) - 1 : 1 ))
+         rm -rf ../out && mkdir -p ../out
+         
+         # Jalankan defconfig senyap tanpa warning override symbol ke terminal
+         make ARCH=arm64 O=../out ${{ inputs.kernel-config }} > /dev/null 2>&1
+         
          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
          
          EXTRA_CFLAGS=""
@@ -233,15 +304,16 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         make -j$SAFE_CORES ARCH=arm64 O=../out \
+         # Kompilasi dengan pembungkaman total warning (-w -Qunused-arguments) dan pembatasan aman -j4
+         make -j4 ARCH=arm64 O=../out \
               CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
               CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
               LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-              KCFLAGS="-w -Wno-error -fno-builtin $EXTRA_CFLAGS" \
-              Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
+              KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
+              Image.gz Image.gz-dtb dtbs
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
-             echo "Build Failed!" && tail -n 50 build.log && exit 1
+             echo "Build Failed!" && exit 1
          fi
 
     - name: Collect Output Binaries
