@@ -39,6 +39,7 @@ on:
         - zyc-clang
         - yuki-clang
         - weebx-clang
+        - neutron-clang
         - aosp-clang
         - debian-clang
       lto_mode:
@@ -110,7 +111,7 @@ jobs:
     - name: Install Dependencies
       run: |
          sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch lsb-release software-properties-common gnupg
          
          if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
              sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || true
@@ -138,18 +139,51 @@ jobs:
          elif [ "${{ inputs.compiler }}" = "yuki-clang" ]; then
              git clone --depth=1 https://gitlab.com/TheXPerienceProject/yuki_clang.git -b 18.0.0 $HOME/tc
          elif [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
-             mkdir -p $HOME/tc
              wget -q https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz -O weebx-clang.tar.gz
              tar -xf weebx-clang.tar.gz -C $HOME/tc
              rm -f weebx-clang.tar.gz
+         elif [ "${{ inputs.compiler }}" = "neutron-clang" ]; then
+             echo "Mengunduh Neutron Clang menggunakan antman..."
+             cd $HOME/tc
+             curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+             chmod +x antman
+             ./antman -S
+             # Alternatif jika antman gagal: git clone --depth=1 https://gitlab.com/clangsantoni/neutron-clang.git $HOME/tc
          elif [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
              git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 $HOME/tc
          elif [ "${{ inputs.compiler }}" = "debian-clang" ]; then
-             sudo apt-get install --no-install-recommends -y clang lld llvm
+             echo "Memasang LLVM 21 dan mencocokkan string dengan Chroot Kali..."
+             wget https://apt.llvm.org/llvm.sh
+             chmod +x llvm.sh
+             sudo ./llvm.sh 21
+             sudo apt-get install --no-install-recommends -y clang-21 lld-21 llvm-21
+             
              mkdir -p $HOME/tc/bin
-             for cmd in clang ld.lld llvm-ar llvm-nm llvm-objcopy llvm-objdump; do
-                 ln -sf /usr/bin/$cmd $HOME/tc/bin/$cmd
-             done
+             
+             echo '#!/bin/bash' > $HOME/tc/bin/clang
+             echo 'if [[ "$1" == "--version" || "$1" == "-v" ]]; then' >> $HOME/tc/bin/clang
+             echo '    echo "Debian clang version 21.1.8 (3+b1)"' >> $HOME/tc/bin/clang
+             echo '    echo "Target: aarch64-unknown-linux-gnu"' >> $HOME/tc/bin/clang
+             echo '    echo "Thread model: posix"' >> $HOME/tc/bin/clang
+             echo '    echo "InstalledDir: /usr/lib/llvm-21/bin"' >> $HOME/tc/bin/clang
+             echo '    exit 0' >> $HOME/tc/bin/clang
+             echo 'fi' >> $HOME/tc/bin/clang
+             echo 'exec /usr/bin/clang-21 "$@"' >> $HOME/tc/bin/clang
+             
+             echo '#!/bin/bash' > $HOME/tc/bin/ld.lld
+             echo 'if [[ "$1" == "--version" || "$1" == "-v" ]]; then' >> $HOME/tc/bin/ld.lld
+             echo '    echo "Debian LLD 21.1.8"' >> $HOME/tc/bin/ld.lld
+             echo '    exit 0' >> $HOME/tc/bin/ld.lld
+             echo 'fi' >> $HOME/tc/bin/ld.lld
+             echo 'exec /usr/bin/ld.lld-21 "$@"' >> $HOME/tc/bin/ld.lld
+             
+             chmod +x $HOME/tc/bin/clang
+             chmod +x $HOME/tc/bin/ld.lld
+             
+             ln -sf /usr/bin/llvm-ar-21 $HOME/tc/bin/llvm-ar
+             ln -sf /usr/bin/llvm-nm-21 $HOME/tc/bin/llvm-nm
+             ln -sf /usr/bin/llvm-objcopy-21 $HOME/tc/bin/llvm-objcopy
+             ln -sf /usr/bin/llvm-objdump-21 $HOME/tc/bin/llvm-objdump
          fi
 
     - name: Clone Kernel Source
@@ -158,6 +192,12 @@ jobs:
     - name: Apply Kernel Config
       run: |
          cd kernel-dir
+         
+         # --- BERSIHKAN NAMA BAWAAN KERNEL DARI SOURCE ---
+         echo "Membersihkan EXTRAVERSION dan LOCALVERSION bawaan..."
+         sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
+         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' arch/arm64/configs/${{ inputs.kernel-config }} || true
+         
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
          # Base Configs
