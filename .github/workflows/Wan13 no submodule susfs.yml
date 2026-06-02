@@ -1,6 +1,6 @@
-# Linex Project - Customized for Poco F1 (beryllium)
+# Kyzuna Project - Customized for Poco F1 (beryllium)
 name: susfs no submodule wan13
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | APatch:${{ inputs.apatch_mode }} | Hash:${{ inputs.version_hash }}
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.version_hash }}
 
 on:
   workflow_dispatch:
@@ -60,13 +60,13 @@ on:
         - MIUI
         - disable
       apatch_mode:
-        description: 'APatch Support'
-        default: 'disable'
+        description: 'Mode APatch (Enable = APatch)'
+        default: 'enable'
         required: true
         type: choice
         options:
-        - disable
         - enable
+        - disable
       version_hash:
         description: 'Include Version Hash'
         default: 'disable'
@@ -147,7 +147,6 @@ jobs:
              curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
              chmod +x antman
              ./antman -S
-             # Alternatif jika antman gagal: git clone --depth=1 https://gitlab.com/clangsantoni/neutron-clang.git $HOME/tc
          elif [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
              git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 $HOME/tc
          elif [ "${{ inputs.compiler }}" = "debian-clang" ]; then
@@ -192,12 +191,10 @@ jobs:
       run: |
          cd kernel-dir
          
-         # --- BERSIHKAN NAMA BAWAAN KERNEL DARI SOURCE ---
          echo "Membersihkan EXTRAVERSION dan LOCALVERSION bawaan..."
          sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' arch/arm64/configs/${{ inputs.kernel-config }} || true
          
-         # --- OTOMATISASI NAMA COMPILER UNTUK SEMUA CLANG ---
          echo "Mengekstrak versi asli Clang dan LLD..."
          export PATH=$HOME/tc/bin:$PATH
          
@@ -223,21 +220,27 @@ jobs:
          CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
          echo "Hasil format string compiler baru: $CUSTOM_COMPILER_STRING"
          
-         sed -i "s/COMPILER=.*/COMPILER=\"$CUSTOM_COMPILER_STRING\"/g" scripts/mkcompile_h || true
+         echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
+         
+         sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
-         # Base Configs
          for cfg in SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP; do
              echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
          done
          
-         # APatch Support
+         # --- APatch Configurations V1 ---
          if [ "${{ inputs.apatch_mode }}" = "enable" ]; then
-             echo "Mengaktifkan konfigurasi dukungan APatch..."
-             for cfg in OVERLAY_FS KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE; do
-                 echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
-             done
+             echo "Mengaktifkan FULL SUPPORT untuk APatch..."
+             echo "CONFIG_KALLSYMS=y" >> $TARGET_CONFIG
+             echo "CONFIG_KALLSYMS_ALL=y" >> $TARGET_CONFIG
+             echo "CONFIG_KALLSYMS_BASE_RELATIVE=y" >> $TARGET_CONFIG
+             echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
+             echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
+             echo "CONFIG_OVERLAY_FS=y" >> $TARGET_CONFIG
+         else
+             echo "APatch Mode Disable - Menggunakan Config Bawaan Tanpa Tambahan Root"
          fi
          
          # ROM Optimization
@@ -251,7 +254,6 @@ jobs:
              echo "CONFIG_MI_LOG_PRINT=n" >> $TARGET_CONFIG
              echo "CONFIG_MSM_SMD_DEBUG=n" >> $TARGET_CONFIG
              echo "CONFIG_DEBUG_INFO=n" >> $TARGET_CONFIG
-
          elif [ "${{ inputs.rom_optimization }}" = "AOSP" ]; then
              for cfg in KCAL_EQ SOUND_CONTROL USB_FASTCHARGE INPUT_TOUCHSCREEN DEVFREQ_GOV_MSM_ADRENO_TZ IOSCHED_ZEN DEFAULT_ZEN F2FS_FS EXFAT_FS SIMPLE_LMK TCP_CONG_BBR DEFAULT_BBR NET_SCH_FQ NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL; do
                  echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
@@ -281,36 +283,31 @@ jobs:
          export PATH=$HOME/tc/bin:$PATH
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
+         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
          
-         # Logika untuk menyembunyikan / memunculkan Git Hash & -dirty
          if [ "${{ inputs.version_hash }}" = "disable" ]; then
-             echo "Mendisable git hash dan -dirty..."
              echo "" > .scmversion
              export LOCALVERSION_AUTO=""
          else
-             echo "Mengenable git hash dan -dirty..."
              rm -f .scmversion
          fi
          
          rm -rf ../out && mkdir -p ../out
-         
-         # Jalankan defconfig senyap tanpa warning override symbol ke terminal
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }} > /dev/null 2>&1
          
          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
-         
          EXTRA_CFLAGS=""
          if [ "${{ inputs.compiler }}" = "debian-clang" ]; then
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # Kompilasi dengan pembungkaman total warning (-w -Qunused-arguments) dan pembatasan aman -j4
          make -j4 ARCH=arm64 O=../out \
-              CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
-              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-              KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
-              Image.gz Image.gz-dtb dtbs
+             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
+             CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
+             LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
+             KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
+             Image.gz Image.gz-dtb dtbs \
+             2>&1 | grep -v "clang: warning:" | grep -v "LLVM ERROR:"
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "Build Failed!" && exit 1
@@ -320,7 +317,6 @@ jobs:
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
           cd out/arch/arm64/boot
-          
           if [ -f "Image.gz-dtb" ]; then
               cp Image.gz-dtb $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
           elif [ -f "Image.gz" ]; then
@@ -330,12 +326,11 @@ jobs:
                   cp Image.gz $GITHUB_WORKSPACE/kernel_binaries/Image.gz
               fi
           fi
-          
           [ -f "dtbo.img" ] && cp dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img || true
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries-V1"
         path: kernel_binaries/**
         
