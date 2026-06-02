@@ -63,7 +63,9 @@ on:
         required: true
         type: choice
         options:
-        - next-v3.2.0
+        - manager-3.0
+        - all-3.1
+        - next-3.2
         - "false"
       version_hash:
         description: 'Include Version Hash'
@@ -228,13 +230,18 @@ jobs:
              echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
          done
          
-         # --- KSU & APatch Configurations V2 ---
+         # --- KSU & APatch Configurations ---
          if [ "${{ inputs.kernelsu }}" != "false" ]; then
-             echo "Mengonfigurasi KernelSU-Next..."
+             echo "Mengonfigurasi KernelSU dan Menerapkan Patch 4.9 Manual Hook..."
              wget https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
              patch -p1 < kernel-4.4_4.9.patch || echo "Patch manual hook terlewat atau gagal diterapkan"
              
-             if [ "${{ inputs.kernelsu }}" = "next-v3.2.0" ]; then
+             # Eksekusi Skrip Setup berdasarkan Pilihan User
+             if [ "${{ inputs.kernelsu }}" = "manager-3.0" ]; then
+                 curl https://raw.githubusercontent.com/ThRE-Team/Next-v3/refs/heads/main/setup.sh | bash
+             elif [ "${{ inputs.kernelsu }}" = "all-3.1" ]; then
+                 curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main
+             elif [ "${{ inputs.kernelsu }}" = "next-3.2" ]; then
                  curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s v3.2.0
              fi
              
@@ -242,14 +249,12 @@ jobs:
              echo "CONFIG_KSU_MANUAL_HOOK=y" >> $TARGET_CONFIG
              echo "CONFIG_OVERLAY_FS=y" >> $TARGET_CONFIG
              
+             # Matikan KPROBES untuk KernelSU dengan Manual Hook agar tidak bentrok
              sed -i 's/CONFIG_KPROBES=y/# CONFIG_KPROBES is not set/g' $TARGET_CONFIG || true
              sed -i 's/CONFIG_HAVE_KPROBES=y/# CONFIG_HAVE_KPROBES is not set/g' $TARGET_CONFIG || true
              echo "# CONFIG_KPROBES is not set" >> $TARGET_CONFIG
          else
-             echo "Mengaktifkan AUTO FULL SUPPORT untuk APatch + Patch 4.9..."
-             wget https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
-             patch -p1 < kernel-4.4_4.9.patch || echo "Patch manual hook dilewati"
-             
+             echo "Mengaktifkan AUTO FULL SUPPORT untuk APatch (Tanpa Patch)..."
              echo "CONFIG_KALLSYMS=y" >> $TARGET_CONFIG
              echo "CONFIG_KALLSYMS_ALL=y" >> $TARGET_CONFIG
              echo "CONFIG_KALLSYMS_BASE_RELATIVE=y" >> $TARGET_CONFIG
@@ -346,6 +351,6 @@ jobs:
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries-V2"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/**
         
