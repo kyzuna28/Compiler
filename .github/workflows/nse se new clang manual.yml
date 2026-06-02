@@ -1,5 +1,5 @@
 # Linex Project - Customized for Poco F1 (beryllium)
-name: se nse new feature no submodule
+name: no submodule
 run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | APatch:${{ inputs.apatch_mode }} | Hash:${{ inputs.version_hash }}
 
 on:
