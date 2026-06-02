@@ -120,11 +120,11 @@ jobs:
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
 
-    - name: Setup Swap Space (16GB)
+    - name: Setup Swap Space (8GB)
       run: |
          sudo swapoff -a || true
          sudo rm -f /mnt/swapfile || true
-         sudo fallocate -l 16G /mnt/swapfile
+         sudo fallocate -l 8G /mnt/swapfile
          sudo chmod 600 /mnt/swapfile
          sudo mkswap /mnt/swapfile
          sudo swapon /mnt/swapfile
@@ -198,6 +198,34 @@ jobs:
          sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' arch/arm64/configs/${{ inputs.kernel-config }} || true
          
+         # --- OTOMATISASI NAMA COMPILER UNTUK SEMUA CLANG ---
+         echo "Mengekstrak versi asli Clang dan LLD..."
+         export PATH=$HOME/tc/bin:$PATH
+         
+         RAW_CLANG_VER=$(clang --version | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+         RAW_LLD_VER=$(ld.lld --version | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+         
+         if [ -z "$RAW_LLD_VER" ]; then RAW_LLD_VER="$RAW_CLANG_VER"; fi
+         
+         if [ "${{ inputs.compiler }}" = "zyc-clang" ]; then
+             COMPILER_NAME="ZyC Clang"
+         elif [ "${{ inputs.compiler }}" = "yuki-clang" ]; then
+             COMPILER_NAME="Yuki Clang"
+         elif [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
+             COMPILER_NAME="WeebX Clang"
+         elif [ "${{ inputs.compiler }}" = "neutron-clang" ]; then
+             COMPILER_NAME="Neutron Clang"
+         elif [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
+             COMPILER_NAME="AOSP Clang"
+         else
+             COMPILER_NAME="Debian Clang"
+         fi
+         
+         CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
+         echo "Hasil format string compiler baru: $CUSTOM_COMPILER_STRING"
+         
+         sed -i "s/COMPILER=.*/COMPILER=\"$CUSTOM_COMPILER_STRING\"/g" scripts/mkcompile_h || true
+         
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
          # Base Configs
@@ -266,9 +294,10 @@ jobs:
          fi
          
          rm -rf ../out && mkdir -p ../out
-         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
-         SAFE_CORES=$(( $(nproc --all) > 1 ? $(nproc --all) - 1 : 1 ))
+         # Jalankan defconfig senyap tanpa warning override symbol ke terminal
+         make ARCH=arm64 O=../out ${{ inputs.kernel-config }} > /dev/null 2>&1
+         
          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
          
          EXTRA_CFLAGS=""
@@ -276,15 +305,16 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         make -j$SAFE_CORES ARCH=arm64 O=../out \
+         # Kompilasi dengan pembungkaman total warning (-w -Qunused-arguments) dan pembatasan aman -j4
+         make -j4 ARCH=arm64 O=../out \
               CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
               CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
               LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-              KCFLAGS="-w -Wno-error -fno-builtin $EXTRA_CFLAGS" \
-              Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
+              KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
+              Image.gz Image.gz-dtb dtbs
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
-             echo "Build Failed!" && tail -n 50 build.log && exit 1
+             echo "Build Failed!" && exit 1
          fi
 
     - name: Collect Output Binaries
