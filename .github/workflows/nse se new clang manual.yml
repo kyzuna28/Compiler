@@ -50,7 +50,7 @@ on:
         - thin
       rom_optimization:
         description: 'ROM Specific Tweaks'
-        default: 'AOSP'
+        default: 'disable'
         required: true
         type: choice
         options:
