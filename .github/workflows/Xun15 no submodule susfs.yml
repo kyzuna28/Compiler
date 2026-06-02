@@ -305,13 +305,13 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # Kembalikan ke format make aslimu, hanya ubah LLVM_IAS=0 (fix broken pipe)
-         # Serta tambahkan -w -Qunused-arguments langsung ke KCFLAGS untuk membungkam warning clang
+         # LLVM_IAS=0 untuk membasmi broken pipe
+         # KCFLAGS dengan argumen spesifik untuk membungkam log warning tanpa memicu error
          make -j$(nproc --all) ARCH=arm64 O=../out \
               CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=0 \
               CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
               LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-              KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
+              KCFLAGS="-Qunused-arguments -Wno-unused-command-line-argument $EXTRA_CFLAGS" \
               Image.gz Image.gz-dtb dtbs
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
