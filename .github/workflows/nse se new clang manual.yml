@@ -17,12 +17,12 @@ on:
         type: string
       kernel_name:
         description: 'Kernel Name'
-        default: 'cip128-st12'
+        default: 'XuN®'
         required: true
         type: string
       rom_type:
         description: 'ROM Type'
-        default: 'Kyy'
+        default: 'カキクx1'
         required: true
         type: string
       project_name:
@@ -214,6 +214,16 @@ jobs:
          export PATH=$HOME/tc/bin:$PATH
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
+         
+         # Logika untuk menyembunyikan / memunculkan Git Hash & -dirty
+         if [ "${{ inputs.version_hash }}" = "disable" ]; then
+             echo "Mendisable git hash dan -dirty..."
+             echo "" > .scmversion
+             export LOCALVERSION_AUTO=""
+         else
+             echo "Mengenable git hash dan -dirty..."
+             rm -f .scmversion
+         fi
          
          rm -rf ../out && mkdir -p ../out
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
