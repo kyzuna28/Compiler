@@ -312,11 +312,12 @@ jobs:
          
          # Kompilasi dengan pembungkaman total warning (-w -Qunused-arguments) dan pembatasan aman -j4
          make -j4 ARCH=arm64 O=../out \
-              CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
-              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-              KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
-              Image.gz Image.gz-dtb dtbs
+             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
+             CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
+             LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
+             KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
+             Image.gz Image.gz-dtb dtbs \
+             2>&1 | grep -v "clang: warning:" | grep -v "LLVM ERROR: IO failure on output stream: Broken pipe"
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "Build Failed!" && exit 1
