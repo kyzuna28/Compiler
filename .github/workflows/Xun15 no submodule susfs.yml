@@ -1,6 +1,6 @@
-# Linex Project - Customized for Poco F1 (beryllium)
+# Kyzuna Project - Customized for Poco F1 (beryllium)
 name: susfs no submodule xun15
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.version_hash }}
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.version_hash }}
 
 on:
   workflow_dispatch:
@@ -147,7 +147,6 @@ jobs:
              curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
              chmod +x antman
              ./antman -S
-             # Alternatif jika antman gagal: git clone --depth=1 https://gitlab.com/clangsantoni/neutron-clang.git $HOME/tc
          elif [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
              git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 $HOME/tc
          elif [ "${{ inputs.compiler }}" = "debian-clang" ]; then
@@ -234,6 +233,15 @@ jobs:
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
+         # --- FIX UTAMA UNTUK ERROR LSE ATOMICS & STACKPROTECTOR ---
+         sed -i '/CONFIG_ARM64_LSE_ATOMICS/d' $TARGET_CONFIG || true
+         sed -i '/CONFIG_CC_STACKPROTECTOR_STRONG/d' $TARGET_CONFIG || true
+         sed -i '/CONFIG_CC_STACKPROTECTOR/d' $TARGET_CONFIG || true
+         
+         echo "CONFIG_ARM64_LSE_ATOMICS=n" >> $TARGET_CONFIG
+         echo "CONFIG_CC_STACKPROTECTOR_NONE=y" >> $TARGET_CONFIG
+         echo "CONFIG_CC_STACKPROTECTOR_STRONG=n" >> $TARGET_CONFIG
+         
          # Base Configs
          for cfg in SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP; do
              echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
@@ -289,6 +297,13 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
          
+         # Mencegah kernel membaca gcc bawaan sistem saat pengecekan awal
+         export CC=clang
+         export HOSTCC=clang
+         export CLANG_TRIPLE=aarch64-linux-gnu-
+         export CROSS_COMPILE=aarch64-linux-gnu-
+         export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+         
          # Logika untuk menyembunyikan / memunculkan Git Hash & -dirty
          if [ "${{ inputs.version_hash }}" = "disable" ]; then
              echo "Mendisable git hash dan -dirty..."
@@ -301,8 +316,8 @@ jobs:
          
          rm -rf ../out && mkdir -p ../out
          
-         # Jalankan defconfig senyap tanpa warning override symbol ke terminal
-         make ARCH=arm64 O=../out ${{ inputs.kernel-config }} > /dev/null 2>&1
+         # Jalankan defconfig dengan compiler Clang agar pengecekan support LSE akurat
+         make ARCH=arm64 O=../out CC=clang CROSS_COMPILE=aarch64-linux-gnu- ${{ inputs.kernel-config }} > /dev/null 2>&1
          
          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
          
@@ -314,7 +329,7 @@ jobs:
          # Kompilasi dengan pembungkaman total warning (-w -Qunused-arguments)
          # LLVM_IAS=0 untuk memperbaiki "broken pipe" di modul crypto
          make -j$(nproc --all) ARCH=arm64 O=../out \
-              CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=0 \
+              CC=clang HOSTCC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=0 \
               CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
               LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
               KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
