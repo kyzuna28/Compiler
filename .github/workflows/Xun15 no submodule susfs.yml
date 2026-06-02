@@ -147,7 +147,6 @@ jobs:
              curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
              chmod +x antman
              ./antman -S
-             # Alternatif jika antman gagal: git clone --depth=1 https://gitlab.com/clangsantoni/neutron-clang.git $HOME/tc
          elif [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
              git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 $HOME/tc
          elif [ "${{ inputs.compiler }}" = "debian-clang" ]; then
@@ -220,16 +219,14 @@ jobs:
              COMPILER_NAME="Debian Clang"
          fi
          
-                 CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
+         CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
          echo "Hasil format string compiler baru: $CUSTOM_COMPILER_STRING"
          
-         # 1. Timpa jika menggunakan variabel COMPILER (untuk berjaga-jaga jika source-nya dimodifikasi)
-         sed -i 's/^[[:space:]]*COMPILER=.*/COMPILER="'"$CUSTOM_COMPILER_STRING"'"/g' scripts/mkcompile_h || true
+         # Daftarkan variabel string agar menetap kuat ke step berikutnya
+         echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
          
-         # 2. Timpa langsung format echo bawaan kernel 4.9 (Ini yang paling ampuh)
-         sed -i 's|echo \\#define LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
-         
-         sed -i "s/COMPILER=.*/COMPILER=\"$CUSTOM_COMPILER_STRING\"/g" scripts/mkcompile_h || true
+         # CARA PAMUNGKAS: Cari kata LINUX_COMPILER di scripts/mkcompile_h lalu timpa paksa baris tersebut
+         sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
@@ -287,6 +284,9 @@ jobs:
          export PATH=$HOME/tc/bin:$PATH
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
+         
+         # Override string compiler pada environment build
+         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
          
          # Logika untuk menyembunyikan / memunculkan Git Hash & -dirty
          if [ "${{ inputs.version_hash }}" = "disable" ]; then
