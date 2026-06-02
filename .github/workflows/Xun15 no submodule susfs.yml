@@ -191,12 +191,6 @@ jobs:
       run: |
          cd kernel-dir
          
-         # --- BUNGKAM WARNING LANGSUNG DARI AKAR MAKEFILE ---
-         echo "Membunuh semua warning compiler dari Makefile utama..."
-         sed -i 's/KBUILD_CFLAGS   := /KBUILD_CFLAGS   := -w -Qunused-arguments -Wno-error /g' Makefile || true
-         sed -i 's/-Wall//g' Makefile || true
-         sed -i 's/-Werror//g' Makefile || true
-         
          # --- BERSIHKAN NAMA BAWAAN KERNEL DARI SOURCE ---
          echo "Membersihkan EXTRAVERSION dan LOCALVERSION bawaan..."
          sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
@@ -228,19 +222,11 @@ jobs:
          CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
          echo "Hasil format string compiler baru: $CUSTOM_COMPILER_STRING"
          
+         # Suntik paksa string compiler baru ke dalam mkcompile_h agar terbaca utuh di APatch
          sed -i "s/COMPILER=.*/COMPILER=\"$CUSTOM_COMPILER_STRING\"/g" scripts/mkcompile_h || true
          sed -i 's/echo \\"#define LINUX_COMPILER.*/echo \\"#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"\\"/g' scripts/mkcompile_h || true
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
-         
-         # --- FIX UTAMA UNTUK ERROR LSE ATOMICS & STACKPROTECTOR ---
-         sed -i '/CONFIG_ARM64_LSE_ATOMICS/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_CC_STACKPROTECTOR_STRONG/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_CC_STACKPROTECTOR/d' $TARGET_CONFIG || true
-         
-         echo "CONFIG_ARM64_LSE_ATOMICS=n" >> $TARGET_CONFIG
-         echo "CONFIG_CC_STACKPROTECTOR_NONE=y" >> $TARGET_CONFIG
-         echo "CONFIG_CC_STACKPROTECTOR_STRONG=n" >> $TARGET_CONFIG
          
          # Base Configs
          for cfg in SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP; do
@@ -297,13 +283,6 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
          
-         # Mencegah kernel membaca gcc bawaan sistem saat pengecekan awal
-         export CC=clang
-         export HOSTCC=clang
-         export CLANG_TRIPLE=aarch64-linux-gnu-
-         export CROSS_COMPILE=aarch64-linux-gnu-
-         export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-         
          # Logika untuk menyembunyikan / memunculkan Git Hash & -dirty
          if [ "${{ inputs.version_hash }}" = "disable" ]; then
              echo "Mendisable git hash dan -dirty..."
@@ -316,8 +295,8 @@ jobs:
          
          rm -rf ../out && mkdir -p ../out
          
-         # Jalankan defconfig dengan compiler Clang agar pengecekan support LSE akurat
-         make ARCH=arm64 O=../out CC=clang CROSS_COMPILE=aarch64-linux-gnu- ${{ inputs.kernel-config }} > /dev/null 2>&1
+         # Jalankan defconfig bawaan asli scriptmu tanpa diganggu
+         make ARCH=arm64 O=../out ${{ inputs.kernel-config }} > /dev/null 2>&1
          
          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
          
@@ -326,10 +305,10 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # Kompilasi dengan pembungkaman total warning (-w -Qunused-arguments)
-         # LLVM_IAS=0 untuk memperbaiki "broken pipe" di modul crypto
+         # Kembalikan ke format make aslimu, hanya ubah LLVM_IAS=0 (fix broken pipe)
+         # Serta tambahkan -w -Qunused-arguments langsung ke KCFLAGS untuk membungkam warning clang
          make -j$(nproc --all) ARCH=arm64 O=../out \
-              CC=clang HOSTCC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=0 \
+              CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=0 \
               CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
               LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
               KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
