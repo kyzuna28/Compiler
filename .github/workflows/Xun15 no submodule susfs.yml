@@ -293,7 +293,7 @@ jobs:
          fi
          
          rm -rf ../out && mkdir -p ../out
-         make ARCH=arm64 O=../out ${{ inputs.kernel-config }} > /dev/null 2>&1
+         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
          EXTRA_CFLAGS=""
