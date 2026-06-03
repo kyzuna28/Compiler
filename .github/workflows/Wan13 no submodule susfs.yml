@@ -119,13 +119,11 @@ jobs:
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
 
-    # Menggunakan Smart Swap (Lebih efisien & rapi daripada bash script manual)
     - name: Setup Swap Space (8GB)
       uses: pierotofy/set-swap-space@master
       with:
         swap-size-gb: 8
 
-    # Caching Toolchain agar tidak download berulang-ulang
     - name: Cache Toolchain
       id: cache-tc
       uses: actions/cache@v4
@@ -190,7 +188,6 @@ jobs:
              ln -sf /usr/bin/llvm-objdump-21 $HOME/tc/bin/llvm-objdump
          fi
 
-    # Caching untuk kompilasi Kernel agar build ulang lebih cepat (di bawah 10 menit)
     - name: Setup Compiler Cache (CCache)
       uses: hendrikmuhs/ccache-action@v1.2.14
       with:
@@ -294,7 +291,7 @@ jobs:
       run: |
          cd kernel-dir
          
-         # Tambahkan direktori ccache ke PATH
+         # Mendaftarkan CCache ke sistem PATH
          export PATH="/usr/lib/ccache:$HOME/tc/bin:$PATH"
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
@@ -316,7 +313,7 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # Tetap mempertahankan -j4 sesuai permintaan, ditambahkan dengan dukungan CCache
+         # Menggunakan ccache clang dan tetap mempertahankan j4
          make -j4 ARCH=arm64 O=../out \
              CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
