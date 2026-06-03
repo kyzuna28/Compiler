@@ -1,5 +1,5 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
-name: Non susfs ksun v2 modern
+name: Non susfs ksun v2
 run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.version_hash }}
 
 on:
@@ -124,7 +124,6 @@ jobs:
       with:
         swap-size-gb: 8
 
-    # --- MODERN FEATURE 1: Caching Toolchain ---
     - name: Cache Toolchain
       id: cache-tc
       uses: actions/cache@v4
@@ -189,7 +188,6 @@ jobs:
              ln -sf /usr/bin/llvm-objdump-21 $HOME/tc/bin/llvm-objdump
          fi
 
-    # --- MODERN FEATURE 2: CCache (Compiler Cache) ---
     - name: Setup Compiler Cache (CCache)
       uses: hendrikmuhs/ccache-action@v1.2.14
       with:
@@ -331,7 +329,6 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # Menggunakan ccache clang dan -j2 untuk mencegah OOM
          make -j2 ARCH=arm64 O=../out \
              CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -358,7 +355,7 @@ jobs:
               fi
           fi
           [ -f "dtbo.img" ] && cp dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img || true
-          
+
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
