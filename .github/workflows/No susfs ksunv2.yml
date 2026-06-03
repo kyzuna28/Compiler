@@ -308,6 +308,8 @@ jobs:
     - name: Compile Kernel
       run: |
          cd kernel-dir
+         
+         # Mendaftarkan CCache ke sistem PATH
          export PATH="/usr/lib/ccache:$HOME/tc/bin:$PATH"
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
