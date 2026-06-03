@@ -329,7 +329,8 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         make -j2 ARCH=arm64 O=../out \
+         # Menggunakan ccache clang dan tetap mempertahankan j4
+         make -j4 ARCH=arm64 O=../out \
              CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
@@ -338,7 +339,7 @@ jobs:
              2>&1 | grep -v "clang: warning:" | grep -v "LLVM ERROR:"
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
-             echo "Build Failed! Image tidak ditemukan." && exit 1
+             echo "Build Failed!" && exit 1
          fi
 
     - name: Collect Output Binaries
@@ -359,8 +360,8 @@ jobs:
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries-V1"
         path: kernel_binaries/**
         compression-level: 9
-        retention-days: 7
+        retention-days: 30
         
