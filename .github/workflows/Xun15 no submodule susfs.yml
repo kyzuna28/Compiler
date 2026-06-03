@@ -119,13 +119,11 @@ jobs:
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
 
-    # Menggunakan Smart Swap (Lebih efisien & rapi daripada bash script manual)
     - name: Setup Swap Space (8GB)
       uses: pierotofy/set-swap-space@master
       with:
         swap-size-gb: 8
 
-    # Caching Toolchain agar tidak download berulang-ulang
     - name: Cache Toolchain
       id: cache-tc
       uses: actions/cache@v4
@@ -190,7 +188,6 @@ jobs:
              ln -sf /usr/bin/llvm-objdump-21 $HOME/tc/bin/llvm-objdump
          fi
 
-    # Caching untuk kompilasi Kernel (CCache) agar build ulang lebih instan
     - name: Setup Compiler Cache (CCache)
       uses: hendrikmuhs/ccache-action@v1.2.14
       with:
