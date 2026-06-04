@@ -126,8 +126,17 @@ jobs:
          sudo chmod 600 /mnt/swapfile
          sudo mkswap /mnt/swapfile
          sudo swapon /mnt/swapfile
+
+    # --- TAMBAHAN UNTUK KECEPATAN: CACHE TOOLCHAIN ---
+    - name: Cache Toolchain
+      id: cache-tc
+      uses: actions/cache@v4
+      with:
+        path: ~/tc
+        key: toolchain-${{ inputs.compiler }}-${{ runner.os }}
          
     - name: Download Toolchain
+      if: steps.cache-tc.outputs.cache-hit != 'true'
       run: |
          rm -rf $HOME/tc $HOME/tmp-tc && mkdir -p $HOME/tc
          echo "Mengunduh Clang (${{ inputs.compiler }})..."
@@ -182,6 +191,13 @@ jobs:
              ln -sf /usr/bin/llvm-objcopy-21 $HOME/tc/bin/llvm-objcopy
              ln -sf /usr/bin/llvm-objdump-21 $HOME/tc/bin/llvm-objdump
          fi
+
+    # --- TAMBAHAN UNTUK KECEPATAN: CCACHE ---
+    - name: Setup Compiler Cache (CCache)
+      uses: hendrikmuhs/ccache-action@v1.2.14
+      with:
+        key: kernel-build-${{ inputs.compiler }}-${{ inputs.kernel-config }}
+        max-size: "4G"
          
     - name: Clone Kernel Source & Init Submodules
       run: |
@@ -303,7 +319,8 @@ jobs:
     - name: Compile Kernel
       run: |
          cd kernel-dir
-         export PATH=$HOME/tc/bin:$PATH
+         # --- TAMBAHAN UNTUK KECEPATAN: TAMBAH PATH CCACHE ---
+         export PATH="/usr/lib/ccache:$HOME/tc/bin:$PATH"
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
          export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
@@ -324,9 +341,12 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # Full Core Turbo LTO dengan Memory Guard ala Neutron Clang
+         # --- TAMBAHAN UNTUK KECEPATAN: BIKIN FOLDER THINLTO BIAR GA ERROR ---
+         mkdir -p ../out/.thinlto-cache
+         
+         # --- TAMBAHAN UNTUK KECEPATAN: PAKAI CCACHE DI CC= ---
          make -j$(nproc --all) ARCH=arm64 O=../out \
-             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM=1 LLVM_IAS=1 \
+             CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM=1 LLVM_IAS=1 \
              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
              KBUILD_LDFLAGS="-Wl,-mllvm,-reduce-memory-footprint -Wl,-mllvm,-thinlto-jobs=4 -Wl,--thinlto-cache-dir=../out/.thinlto-cache" \
              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
