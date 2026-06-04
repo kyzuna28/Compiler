@@ -348,7 +348,7 @@ jobs:
          make -j$(nproc --all) ARCH=arm64 O=../out \
              CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM=1 LLVM_IAS=1 \
              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-             KBUILD_LDFLAGS="-Wl,-mllvm,-reduce-memory-footprint -Wl,-mllvm,-thinlto-jobs=4 -Wl,--thinlto-cache-dir=../out/.thinlto-cache" \
+             LDFLAGS_vmlinux="-mllvm -reduce-memory-footprint -mllvm -thinlto-jobs=4 --thinlto-cache-dir=../out/.thinlto-cache" \
              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
              KCFLAGS="-w -Wno-error -fno-builtin -fcommon -fno-strict-aliasing -fno-delete-null-pointer-checks $EXTRA_CFLAGS" \
              Image.gz Image.gz-dtb dtbs \
