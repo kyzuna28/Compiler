@@ -171,7 +171,7 @@ index 229d06b786e1..c2901eb20c5d 100644
 +#endif
  	};
  };
-diff --git a/arch/arm64/boot/dts/qcom/smb1355.dtsi b/arch/arm64/boot/dts/qcom/smb1355.dtsi
+ diff --git a/arch/arm64/boot/dts/qcom/smb1355.dtsi b/arch/arm64/boot/dts/qcom/smb1355.dtsi
 index 5939440cfa47..dae1cc6d90dc 100644
 --- a/arch/arm64/boot/dts/qcom/smb1355.dtsi
 +++ b/arch/arm64/boot/dts/qcom/smb1355.dtsi
@@ -513,4 +513,4 @@ index 5606341e9efd..427d93136565 100644
 +module_param_cb(thre_compiler, &comp_ops, thre_compiler, 0644);
 +module_param_cb(thre_build_date, &date_ops, thre_build_date, 0644);
 +#endif
-+ /* linex Project */
++/* linex Project */
