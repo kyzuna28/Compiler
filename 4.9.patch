@@ -24,7 +24,7 @@ index 667f54445b4f..0b483dfbb1a7 100644
 @@ -123,3 +123,6 @@ kernel/configs/android-*.cfg
  #Ignoring Android.bp link file
  #
- Android.bp
+  Android.bp
 +
 +# Ignoring out folder
 +out/
@@ -38,13 +38,13 @@ index 229d06b786e1..c2901eb20c5d 100644
  	qcom,chipid = <0x06030001>;
 -	qcom,initial-pwrlevel = <6>;
 +	qcom,initial-pwrlevel = <7>;
- 
+  
  	qcom,gpu-pwrlevels {
  		#address-cells = <1>;
 @@ -563,6 +563,118 @@
  		#size-cells = <0>;
  		compatible = "qcom,gpu-pwrlevels";
- 
+  
 +#ifdef CONFIG_LIMITLESS
 +		/* LIMITLESS MODE: Battery Saver Optimized */
 +		qcom,gpu-pwrlevel@0 {
@@ -178,7 +178,7 @@ index 5939440cfa47..dae1cc6d90dc 100644
 @@ -38,6 +38,11 @@ smb1355_0: qcom,smb1355@8 {
  		interrupt-parent = <&smb1355_0>;
  		status = "disabled";
- 
+  
 +#ifdef CONFIG_LIMITLESS
 +		qcom,fastchg-current-ma = <2800>;
 +		qcom,hc-mode-current-max-ma = <2800>;
@@ -190,7 +190,7 @@ index 5939440cfa47..dae1cc6d90dc 100644
 @@ -85,6 +90,11 @@ smb1355_1: qcom,smb1355@c {
  		interrupt-parent = <&smb1355_1>;
  		status = "disabled";
- 
+  
 +#ifdef CONFIG_LIMITLESS
 +		qcom,fastchg-current-ma = <2800>;
 +		qcom,hc-mode-current-max-ma = <2800>;
@@ -206,7 +206,7 @@ index 48ea05d15dd3..8ee8c84a6a7d 100644
 @@ -527,6 +527,63 @@ static struct clk_osm perfcl_clk = {
  	.hw.init = &osm_clks_init[2],
  };
- 
+  
 +/* --- Limitless S-OC --- */
 +#ifdef CONFIG_LIMITLESS
 +static int thre_cpu_level = 0; /* Set bawaan ke 0 (Default) */
@@ -263,7 +263,7 @@ index 48ea05d15dd3..8ee8c84a6a7d 100644
 +}
 +#endif
 +/* linex Project */
- 
+  
  static struct clk_osm cpu4_perfcl_clk = {
  	.core_num = 0,
 diff --git a/drivers/clk/qcom/gpucc-sdm845.c b/drivers/clk/qcom/gpucc-sdm845.c
@@ -280,7 +280,7 @@ index 27806cc51708..94e672bf3da4 100644
 +	F(780000000, P_CRC_DIV,  1, 0, 0),
  	{ }
  };
- 
+  
 @@ -636,10 +636,10 @@ static void gpu_cc_gfx_sdm845_fixup_sdm845v2(void)
  	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_NOMINAL] =
  		520000000;
@@ -293,7 +293,7 @@ index 27806cc51708..94e672bf3da4 100644
 -		710000000;
 +		780000000;
  }
- 
+  
  static void gpu_cc_gfx_sdm845_fixup_sdm670(void)
 diff --git a/drivers/power/supply/qcom/qpnp-smb2.c b/drivers/power/supply/qcom/qpnp-smb2.c
 index 3aa626517087..6553bdba8c2f 100644
@@ -308,7 +308,7 @@ index 3aa626517087..6553bdba8c2f 100644
 +	vote(chg->usb_icl_votable,
 +		"LIMITLESS_VOTER", true, 2800000);
 +#endif
- 
+  
  	vote(chg->dc_suspend_votable,
  		DEFAULT_VOTER, chip->dt.no_battery, 0);
 diff --git a/drivers/power/supply/qcom/smb5-lib.c b/drivers/power/supply/qcom/smb5-lib.c
@@ -318,7 +318,7 @@ index 262c5eedfc5d..6936b3b4c9fc 100644
 @@ -29,6 +29,11 @@
  #include "storm-watch.h"
  #include "schgm-flash.h"
- 
+  
 +#ifdef CONFIG_LIMITLESS
 + #define USBIN_2500MA 2500000
 + #define USBIN_3000MA 3000000
@@ -334,7 +334,7 @@ index d2154eb6d78f..abe628ec14d1 100644
 @@ -5,12 +5,29 @@
  #include <linux/seq_file.h>
  #include <linux/utsname.h>
- 
+  
 +/* Limitless Identity */
 +#ifdef CONFIG_LIMITLESS
 +extern char thre_user_name[];
@@ -360,15 +360,15 @@ index d2154eb6d78f..abe628ec14d1 100644
 +#endif
  	return 0;
  }
- 
+  
 diff --git a/fs/sdcardfs/sdcardfs.h b/fs/sdcardfs/sdcardfs.h
 index b991219cbb33..03856b77c8ec 100644
---- cod/fs/sdcardfs/sdcardfs.h
+--- a/fs/sdcardfs/sdcardfs.h
 +++ b/fs/sdcardfs/sdcardfs.h
 @@ -73,6 +73,9 @@
- 
+  
  #define AID_PACKAGE_INFO 1027
- 
+  
 +#ifdef CONFIG_LIMITLESS
 + #define SDCARDFS_VERSION "Limitless 2.4"
 +#endif
@@ -381,7 +381,7 @@ index 323bf53b4c8e..85a3d9e15712 100644
 @@ -2368,4 +2368,11 @@ config ASN1
  	 inform it as to what tags are to be expected in a stream and what
  	 functions to call on what tags.
- 
+  
 +config LIMITLESS
 +	bool "Enable Limitless Addon"
 +	default n
@@ -397,7 +397,7 @@ index 5606341e9efd..427d93136565 100644
 @@ -45,7 +45,121 @@ const char linux_banner[] =
  	"Linux version " UTS_RELEASE " (" LINUX_COMPILE_BY "@"
  	LINUX_COMPILE_HOST ") (" LINUX_COMPILER ") " UTS_VERSION "\n";
- 
+  
 +#ifdef CONFIG_LIMITLESS
 +const char linux_proc_banner[] =
 +	"%s version %s (%s@%s) (%s) %s\n";
@@ -513,4 +513,4 @@ index 5606341e9efd..427d93136565 100644
 +module_param_cb(thre_compiler, &comp_ops, thre_compiler, 0644);
 +module_param_cb(thre_build_date, &date_ops, thre_build_date, 0644);
 +#endif
-+/* linex Project */
++ /* linex Project */
