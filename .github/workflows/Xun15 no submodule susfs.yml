@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
-name: susfs no xun15
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.version_hash }}
+name: susfs/include xun15
+run-name: 🚀 ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.apatch_mode }}
 
 on:
   workflow_dispatch:
@@ -260,8 +260,8 @@ jobs:
          else
              echo "APatch Mode Disable - Menggunakan Config Bawaan Tanpa Tambahan Root"
          fi
-         
-        # ROM Optimization
+
+         # ROM Optimization
          if [ "${{ inputs.rom_optimization }}" = "MIUI" ]; then
              for cfg in KCAL_EQ SOUND_CONTROL USB_FASTCHARGE DEVFREQ_GOV_MSM_ADRENO_TZ ZRAM ZCOMP CRYPTO_ZSTD ZRAM_DEF_COMP_ZSTD SIMPLE_LMK IOSCHED_MAPLE DEFAULT_MAPLE F2FS_FS EXFAT_FS BOEFFLA_WL_BLOCKER STATE_NOTIFIER POWER_SUSPEND POWER_SUSPEND_STATE NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL; do
                  echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
