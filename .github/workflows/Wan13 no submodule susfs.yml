@@ -1,5 +1,5 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
-name: susfs no submodule wan13
+name: susfs wan13 final
 run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.version_hash }}
 
 on:
@@ -119,10 +119,14 @@ jobs:
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
 
-    - name: Setup Swap Space (8GB)
-      uses: pierotofy/set-swap-space@master
-      with:
-        swap-size-gb: 8
+    - name: Setup Swap Space (16GB)
+      run: |
+         sudo swapoff -a || true
+         sudo rm -f /mnt/swapfile || true
+         sudo fallocate -l 16G /mnt/swapfile
+         sudo chmod 600 /mnt/swapfile
+         sudo mkswap /mnt/swapfile
+         sudo swapon /mnt/swapfile
 
     - name: Cache Toolchain
       id: cache-tc
@@ -194,13 +198,13 @@ jobs:
         key: kernel-build-${{ inputs.compiler }}-${{ inputs.kernel-config }}
         max-size: "4G"
 
-    - name: Clone Kernel Source & Bypass KSU Submodule Check
+    - name: Clone Kernel Source & Init Submodules
       run: |
          git config --global --add safe.directory '*'
          git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
-         
          cd kernel-dir
          git config --global --add safe.directory $(pwd)
+         echo "Melakukan inisialisasi git submodule..."
          git submodule update --init --recursive
 
     - name: Apply Kernel Config
@@ -296,8 +300,6 @@ jobs:
     - name: Compile Kernel
       run: |
          cd kernel-dir
-         
-         # Mendaftarkan CCache ke sistem PATH
          export PATH="/usr/lib/ccache:$HOME/tc/bin:$PATH"
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
@@ -319,12 +321,13 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # Menggunakan ccache clang dan tetap mempertahankan j4
-         make -j4 ARCH=arm64 O=../out \
-             CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
+         # Full Core Turbo LTO + Memory Guard + CCache
+         make -j$(nproc --all) ARCH=arm64 O=../out \
+             CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM=1 LLVM_IAS=1 \
              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
+             KBUILD_LDFLAGS="-Wl,-mllvm,-reduce-memory-footprint -Wl,-mllvm,-thinlto-jobs=4 -Wl,--thinlto-cache-dir=../out/.thinlto-cache" \
              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-             KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
+             KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin -fcommon -fno-strict-aliasing -fno-delete-null-pointer-checks $EXTRA_CFLAGS" \
              Image.gz Image.gz-dtb dtbs \
              2>&1 | grep -v "clang: warning:" | grep -v "LLVM ERROR:"
          
@@ -350,7 +353,7 @@ jobs:
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries-V1"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries-Final"
         path: kernel_binaries/**
         compression-level: 9
         retention-days: 30
