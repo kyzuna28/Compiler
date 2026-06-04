@@ -194,8 +194,14 @@ jobs:
         key: kernel-build-${{ inputs.compiler }}-${{ inputs.kernel-config }}
         max-size: "4G"
 
-    - name: Clone Kernel Source
-      run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+    - name: Clone Kernel Source & Bypass KSU Submodule Check
+      run: |
+         git config --global --add safe.directory '*'
+         git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+         
+         cd kernel-dir
+         git config --global --add safe.directory $(pwd)
+         git submodule update --init --recursive
 
     - name: Apply Kernel Config
       run: |
