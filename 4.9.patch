@@ -30,7 +30,7 @@ index 667f54445b4f..0b483dfbb1a7 100644
 +out/
 diff --git a/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi b/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi
 index 229d06b786e1..c2901eb20c5d 100644
---- a/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi
+--- apportioned space context
 +++ b/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi
 @@ -478,7 +478,7 @@
  &msm_gpu {
@@ -171,7 +171,8 @@ index 229d06b786e1..c2901eb20c5d 100644
 +#endif
  	};
  };
- diff --git a/arch/arm64/boot/dts/qcom/smb1355.dtsi b/arch/arm64/boot/dts/qcom/smb1355.dtsi
+ 
+diff --git a/arch/arm64/boot/dts/qcom/smb1355.dtsi b/arch/arm64/boot/dts/qcom/smb1355.dtsi
 index 5939440cfa47..dae1cc6d90dc 100644
 --- a/arch/arm64/boot/dts/qcom/smb1355.dtsi
 +++ b/arch/arm64/boot/dts/qcom/smb1355.dtsi
@@ -203,13 +204,13 @@ diff --git a/drivers/clk/qcom/clk-cpu-osm.c b/drivers/clk/qcom/clk-cpu-osm.c
 index 48ea05d15dd3..8ee8c84a6a7d 100644
 --- a/drivers/clk/qcom/clk-cpu-osm.c
 +++ b/drivers/clk/qcom/clk-cpu-osm.c
-@@ -527,6 +527,63 @@ static struct clk_osm perfcl_clk = {
+@@ -527,6 +527,63_tt static struct clk_osm perfcl_clk = {
  	.hw.init = &osm_clks_init[2],
  };
   
 +/* --- Limitless S-OC --- */
 +#ifdef CONFIG_LIMITLESS
-+static int thre_cpu_level = 0; /* Set bawaan ke 0 (Default) */
++static int thre_cpu_level = 0;
 +static int set_cpu_level(const char *val, const struct kernel_param *kp);
 +
 +static const struct kernel_param_ops cpu_level_ops = {
@@ -219,17 +220,15 @@ index 48ea05d15dd3..8ee8c84a6a7d 100644
 +
 +module_param_cb(thre_oc_level, &cpu_level_ops, &thre_cpu_level, 0644);
 +
-+/* Limitless S-OC Level: Throttling Max Frequency */
 +static int set_cpu_level(const char *val, const struct kernel_param *kp)
 +{
 +	int ret, level;
-+	struct clk_osm *c = &perfcl_clk; /* Fokus ke kluster Prime/Gold */
++	struct clk_osm *c = &perfcl_clk;
 +	unsigned long target_max_rate;
 +
 +	ret = kstrtoint(val, 10, &level);
 +	if (ret) return ret;
 +
-+	/* Batasi input level dari -3 (Void) sampai 4 (Prime) */
 +	if (level < -3) level = -3;
 +	if (level > 4) level = 4;
 +
@@ -237,22 +236,20 @@ index 48ea05d15dd3..8ee8c84a6a7d 100644
 +
 +	if (c && c->hw.init) {
 +		switch (level) {
-+			case 4: target_max_rate = 2803200000; break; /* 4 (Prime) - ~2.80 GHz */
-+			case 3: target_max_rate = 2457600000; break; /* 3 (Velocity) - ~2.45 GHz */
-+			case 2: target_max_rate = 2188800000; break; /* 2 (Swift) - ~2.18 GHz */
-+			case 1: target_max_rate = 1996800000; break; /* 1 (Lite) - ~1.99 GHz */
-+			case 0: target_max_rate = 1766400000; break; /* 0 (Default) - ~1.76 GHz */
-+			case -1: target_max_rate = 1420800000; break; /* -1 (Eco) - ~1.42 GHz */
-+			case -2: target_max_rate = 1132800000; break; /* -2 (Chill) - ~1.13 GHz */
-+			case -3: target_max_rate = 825600000; break;  /* -3 (Void) - ~0.82 GHz */
-+			default: target_max_rate = 1766400000; break; /* Aman di Default */
++			case 4: target_max_rate = 2803200000; break;
++			case 3: target_max_rate = 2457600000; break;
++			case 2: target_max_rate = 2188800000; break;
++			case 1: target_max_rate = 1996800000; break;
++			case 0: target_max_rate = 1766400000; break;
++			case -1: target_max_rate = 1420800000; break;
++			case -2: target_max_rate = 1132800000; break;
++			case -3: target_max_rate = 825600000; break;
++			default: target_max_rate = 1766400000; break;
 +		}
 +
-+		/* Terapkan pembatasan frekuensi langsung ke hardware clock */
 +		c->hw.init->rate_max[VDD_GX_HIGH_L1] = target_max_rate;
 +		c->hw.init->rate_max[VDD_GX_NOMINAL] = target_max_rate;
 +		
-+		/* Paksa turun jika frekuensi saat ini nyangkut di atas target baru */
 +		if (clk_hw_get_rate(&c->hw) > target_max_rate) {
 +			clk_set_rate(c->hw.clk, target_max_rate);
 +		}
@@ -270,7 +267,7 @@ diff --git a/drivers/clk/qcom/gpucc-sdm845.c b/drivers/clk/qcom/gpucc-sdm845.c
 index 27806cc51708..94e672bf3da4 100644
 --- a/drivers/clk/qcom/gpucc-sdm845.c
 +++ b/drivers/clk/qcom/gpucc-sdm845.c
-@@ -279,9 +279,9 @@ static const struct freq_tbl  ftbl_gpu_cc_gx_gfx3d_clk_src_sdm845_v2[] = {
+@@ -279,9 +279,9 @@ static const struct freq_tbl ftbl_gpu_cc_gx_gfx3d_clk_src_sdm845_v2[] = {
  	F(342000000, P_CRC_DIV,  1, 0, 0),
  	F(414000000, P_CRC_DIV,  1, 0, 0),
  	F(520000000, P_CRC_DIV,  1, 0, 0),
