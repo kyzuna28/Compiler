@@ -339,18 +339,32 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # Memastikan folder cache LTO tersedia sebelum compiler mulai bekerja
-         mkdir -p ../out/.thinlto-cache
+         # ==========================================
+         # DYNAMIC LTO & OOM PREVENTION SYSTEM
+         # ==========================================
+         CUSTOM_LDFLAGS=""
+         MAKE_JOBS=$(nproc --all) # Default: Gunakan semua core jika LTO dimatikan
          
-         # Full Core Turbo LTO dengan Memory Guard & CCache
-         make -j$(nproc --all) ARCH=arm64 O=../out \
+         if [ "${{ inputs.lto_mode }}" = "thin" ]; then
+             mkdir -p ../out/.thinlto-cache
+             CUSTOM_LDFLAGS="-mllvm -reduce-memory-footprint -mllvm -thinlto-jobs=4 --thinlto-cache-dir=../out/.thinlto-cache"
+             MAKE_JOBS=4 # Alokasi 4 core agar RAM stabil saat ThinLTO
+             echo "ThinLTO aktif: Injeksi flag LDFLAGS, membatasi pekerjaan kompilasi ke-4 thread..."
+         elif [ "${{ inputs.lto_mode }}" = "full" ]; then
+             MAKE_JOBS=2 # Batasi ke 2 core murni karena Full LTO sangat rakus memori
+             echo "Full LTO aktif: Membatasi pekerjaan kompilasi ke-2 thread demi mencegah Error 143 (OOM)..."
+         fi
+         
+         # Mengeksekusi Make dengan thread dinamis ($MAKE_JOBS)
+         # Injeksi opsi -pipe dan -fsplit-lto-unit pada KCFLAGS untuk proteksi RAM tambahan
+         make -j$MAKE_JOBS ARCH=arm64 O=../out \
              CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM=1 LLVM_IAS=1 \
              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-             KBUILD_LDFLAGS="-Wl,-mllvm,-reduce-memory-footprint -Wl,-mllvm,-thinlto-jobs=4 -Wl,--thinlto-cache-dir=../out/.thinlto-cache" \
+             LDFLAGS_vmlinux="$CUSTOM_LDFLAGS" \
              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-             KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin -fcommon -fno-strict-aliasing -fno-delete-null-pointer-checks $EXTRA_CFLAGS" \
+             KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin -fcommon -fno-strict-aliasing -fno-delete-null-pointer-checks -pipe -fsplit-lto-unit $EXTRA_CFLAGS" \
              Image.gz Image.gz-dtb dtbs \
-             2>&1 | grep -v "clang: warning:" | grep -v "LLVM ERROR:"
+             2>&1 | grep -v "clang: warning:"
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "Build Failed!" && exit 1
