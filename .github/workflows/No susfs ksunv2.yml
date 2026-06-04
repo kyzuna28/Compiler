@@ -352,7 +352,8 @@ jobs:
              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
              KCFLAGS="-w -Wno-error -fno-builtin -fcommon -fno-strict-aliasing -fno-delete-null-pointer-checks $EXTRA_CFLAGS" \
              Image.gz Image.gz-dtb dtbs \
-             2>&1 | grep -v "clang: warning:" | grep -v "LLVM ERROR:"
+             2>&1 | grep -v "clang: warning:" \
+             | grep -v "IO failure on output stream: Broken pipe"
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "Build Failed!" && exit 1
