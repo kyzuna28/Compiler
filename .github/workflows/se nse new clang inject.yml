@@ -339,6 +339,9 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
+         # Memastikan folder cache LTO tersedia sebelum compiler mulai bekerja
+         mkdir -p ../out/.thinlto-cache
+         
          # Full Core Turbo LTO dengan Memory Guard & CCache
          make -j$(nproc --all) ARCH=arm64 O=../out \
              CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM=1 LLVM_IAS=1 \
