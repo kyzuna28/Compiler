@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
-name: Non susfs ksun v2
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.version_hash }}
+name: Non susfs ksun v2 
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.kernel-branch }}
 
 on:
   workflow_dispatch:
@@ -98,28 +98,11 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-    - name: Clean Environment & Setup Massive Swap (32GB)
+    - name: Clean Environment
       run: |
          sudo timedatectl set-timezone Asia/Jakarta
-         
-         # Hapus cache aplikasi bawaan runner agar storage lega
-         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
          sudo docker image prune --all --force
-         sudo apt-get clean
-         
-         # Tweak konfigurasi memori virtual Linux (Agresif Swap)
-         sudo sysctl -w vm.swappiness=100
-         sudo sysctl -w vm.overcommit_memory=1
-         
-         # Buat Swap masif 32GB di SSD secondary (/mnt)
-         sudo swapoff -a || true
-         sudo rm -f /swapfile || true
-         sudo fallocate -l 32G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=32768
-         sudo chmod 600 /mnt/swapfile
-         sudo mkswap /mnt/swapfile
-         sudo swapon /mnt/swapfile
-         free -h
-
     - name: Checkout Repository
       uses: actions/checkout@v4
 
@@ -134,16 +117,17 @@ jobs:
          else
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
-
-    - name: Cache Toolchain
-      id: cache-tc
-      uses: actions/cache@v4
-      with:
-        path: ~/tc
-        key: toolchain-${{ inputs.compiler }}-${{ runner.os }}
-
+         
+    - name: Setup Swap Space (16GB)
+      run: |
+         sudo swapoff -a || true
+         sudo rm -f /mnt/swapfile || true
+         sudo fallocate -l 16G /mnt/swapfile
+         sudo chmod 600 /mnt/swapfile
+         sudo mkswap /mnt/swapfile
+         sudo swapon /mnt/swapfile
+         
     - name: Download Toolchain
-      if: steps.cache-tc.outputs.cache-hit != 'true'
       run: |
          rm -rf $HOME/tc $HOME/tmp-tc && mkdir -p $HOME/tc
          echo "Mengunduh Clang (${{ inputs.compiler }})..."
@@ -165,7 +149,7 @@ jobs:
          elif [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
              git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 $HOME/tc
          elif [ "${{ inputs.compiler }}" = "debian-clang" ]; then
-             echo "Memasang LLVM 21..."
+             echo "Memasang LLVM 21 dan mencocokkan string dengan Chroot Kali..."
              wget https://apt.llvm.org/llvm.sh
              chmod +x llvm.sh
              sudo ./llvm.sh 21
@@ -198,15 +182,13 @@ jobs:
              ln -sf /usr/bin/llvm-objcopy-21 $HOME/tc/bin/llvm-objcopy
              ln -sf /usr/bin/llvm-objdump-21 $HOME/tc/bin/llvm-objdump
          fi
-
-    - name: Setup Compiler Cache (CCache)
-      uses: hendrikmuhs/ccache-action@v1.2.14
-      with:
-        key: kernel-build-${{ inputs.compiler }}-${{ inputs.kernel-config }}
-        max-size: "4G"
-
-    - name: Clone Kernel Source
-      run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+         
+    - name: Clone Kernel Source & Init Submodules
+      run: |
+         git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+         cd kernel-dir
+         echo "Melakukan inisialisasi git submodule..."
+         git submodule update --init --recursive
 
     - name: Apply Kernel Config
       run: |
@@ -253,10 +235,11 @@ jobs:
          
          # --- KSU & APatch Configurations ---
          if [ "${{ inputs.kernelsu }}" != "false" ]; then
-             echo "Mengonfigurasi KernelSU..."
+             echo "Mengonfigurasi KernelSU dan Menerapkan Patch 4.9 Manual Hook..."
              wget https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
              patch -p1 < kernel-4.4_4.9.patch || echo "Patch manual hook terlewat atau gagal diterapkan"
              
+             # Eksekusi Skrip Setup berdasarkan Pilihan User
              if [ "${{ inputs.kernelsu }}" = "manager-3.0" ]; then
                  curl https://raw.githubusercontent.com/ThRE-Team/Next-v3/refs/heads/main/setup.sh | bash
              elif [ "${{ inputs.kernelsu }}" = "all-3.1" ]; then
@@ -269,11 +252,12 @@ jobs:
              echo "CONFIG_KSU_MANUAL_HOOK=y" >> $TARGET_CONFIG
              echo "CONFIG_OVERLAY_FS=y" >> $TARGET_CONFIG
              
+             # Matikan KPROBES untuk KernelSU dengan Manual Hook agar tidak bentrok
              sed -i 's/CONFIG_KPROBES=y/# CONFIG_KPROBES is not set/g' $TARGET_CONFIG || true
              sed -i 's/CONFIG_HAVE_KPROBES=y/# CONFIG_HAVE_KPROBES is not set/g' $TARGET_CONFIG || true
              echo "# CONFIG_KPROBES is not set" >> $TARGET_CONFIG
          else
-             echo "Mengaktifkan APatch Support..."
+             echo "Mengaktifkan AUTO FULL SUPPORT untuk APatch (Tanpa Patch)..."
              echo "CONFIG_KALLSYMS=y" >> $TARGET_CONFIG
              echo "CONFIG_KALLSYMS_ALL=y" >> $TARGET_CONFIG
              echo "CONFIG_KALLSYMS_BASE_RELATIVE=y" >> $TARGET_CONFIG
@@ -315,11 +299,11 @@ jobs:
          else
              echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
-
-    - name: Smart Dynamic Compile Engine
+         
+    - name: Compile Kernel
       run: |
          cd kernel-dir
-         export PATH="/usr/lib/ccache:$HOME/tc/bin:$PATH"
+         export PATH=$HOME/tc/bin:$PATH
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
          export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
@@ -339,30 +323,21 @@ jobs:
          if [ "${{ inputs.compiler }}" = "debian-clang" ]; then
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
-
-         # Tentukan jumlah job dasar (Jika neutron/thin lto/disable pakai j4, selain itu pakai j2 untuk driver qcacld)
-         if [ "${{ inputs.compiler }}" = "neutron-clang" ] || [ "${{ inputs.lto_mode }}" != "full" ]; then
-             JOBS_NUM="4"
-         else
-             JOBS_NUM="2"
-         fi
-         echo "Engine mendeteksi keamanan RAM. Menyetel kekuatan kompilasi awal ke: -j${JOBS_NUM}"
          
-         # Proses Kompilasi Utama (Ngebut & Dinamis)
-         make -j${JOBS_NUM} ARCH=arm64 O=../out \
-             CC="ccache clang" \
-             LD="ld.lld --threads=1 --lto-jobs=1 --no-threads" \
-             AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
+         # Full Core Turbo LTO dengan Memory Guard ala Neutron Clang
+         make -j$(nproc --all) ARCH=arm64 O=../out \
+             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM=1 LLVM_IAS=1 \
              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
+             KBUILD_LDFLAGS="-Wl,-mllvm,-reduce-memory-footprint -Wl,-mllvm,-thinlto-jobs=4 -Wl,--thinlto-cache-dir=../out/.thinlto-cache" \
              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-             KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin -flto-jobs=1 $EXTRA_CFLAGS" \
+             KCFLAGS="-w -Wno-error -fno-builtin -fcommon -fno-strict-aliasing -fno-delete-null-pointer-checks $EXTRA_CFLAGS" \
              Image.gz Image.gz-dtb dtbs \
              2>&1 | grep -v "clang: warning:" | grep -v "LLVM ERROR:"
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "Build Failed!" && exit 1
          fi
-
+         
     - name: Collect Output Binaries
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
@@ -377,12 +352,10 @@ jobs:
               fi
           fi
           [ -f "dtbo.img" ] && cp dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img || true
-
+          
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries-V1"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/**
-        compression-level: 9
-        retention-days: 30
         
