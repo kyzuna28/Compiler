@@ -205,7 +205,7 @@ jobs:
          echo "Melakukan inisialisasi git submodule..."
          git submodule update --init --recursive
 
-     - name: Apply Kernel Config
+    - name: Apply Kernel Config
       run: |
          cd kernel-dir
          
