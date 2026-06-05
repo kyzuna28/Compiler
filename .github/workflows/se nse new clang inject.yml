@@ -306,70 +306,74 @@ jobs:
          
     - name: Compile Kernel
       run: |
-         cd kernel-dir
-         
-         # Pastikan skrip langsung gagal jika ada command pipeline yang error
-         set -o pipefail
-         
-         export PATH=$HOME/tc/bin:$PATH
-         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-         export KBUILD_BUILD_HOST="project"
-         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
-         
-         # --- Handle Version Hash ---
-         if [ "${{ inputs.version_hash }}" = "disable" ]; then
-             echo "" > .scmversion
-             export LOCALVERSION_AUTO=""
-         else
-             rm -f .scmversion
-         fi
-         
-         # Bersihkan out directory lama
-         rm -rf ../out && mkdir -p ../out
-         
-         # Generate Defconfig
-         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
-         
-         CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
-         EXTRA_CFLAGS=""
-         if [ "${{ inputs.compiler }}" = "debian-clang" ]; then
-             EXTRA_CFLAGS="--target=aarch64-linux-gnu"
-         fi
-         
-          # --- Manajemen Thread & Resource RAM Dinamis ---
-         # Prioritas utama: Mencegah LLVM IO Failure dengan menurunkan concurrency
-         
-         if [ "${{ inputs.lto_mode }}" = "full" ]; then
-             MAKE_JOBS=2
-             echo "Full LTO Aktif: Membatasi core ke -j2 untuk mencegah IO Failure..."
-         else
-             # Menggunakan pembagi 2 untuk membagi beban (lebih aman daripada nproc penuh)
-             MAKE_JOBS=$(( $(nproc --all) / 2 ))
-             echo "Build Normal: Menggunakan -j${MAKE_JOBS} untuk menjaga stabilitas IO..."
-         fi
-         
-         # Tambahan untuk beberapa toolchain (Neutron/WeebX)
-         export LLVM_PARALLEL=1
-         
-         echo "Memulai proses kompilasi kernel..."
-         
-         # Jalankan make tanpa grep yang aneh-aneh dulu
-         # Kalaupun log kotor, kita lihat dulu apakah dia sukses/tidak
-         make -j$MAKE_JOBS ARCH=arm64 O=../out \
-             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
-             CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-             LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-             KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
-             Image.gz Image.gz-dtb dtbs \
-             2> >(grep -v "clang: warning:" | grep -v "Broken pipe" >&2)
-         
-         # --- Validasi Hasil Akhir ---
-         if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
-             echo "CRITICAL: Kompilasi selesai tetapi binary kernel tidak ditemukan. Build Gagal!"
-             exit 1
-         else
-             echo "SUCCESS: Kernel berhasil dikompilasi dengan sukses!"
-         fi
+        cd kernel-dir
+        set -o pipefail
+
+        export PATH=$HOME/tc/bin:$PATH
+        export KBUILD_BUILD_USER="${{ inputs.project_name }}"
+        export KBUILD_BUILD_HOST="project"
+        export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
+
+        # --- Version Hash ---
+        if [ "${{ inputs.version_hash }}" = "disable" ]; then
+          echo "" > .scmversion
+          export LOCALVERSION_AUTO=""
+        else
+          rm -f .scmversion
+        fi
+
+        # Clean output dir
+        rm -rf ../out && mkdir -p ../out
+
+        # Defconfig
+        make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
+
+        CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
+        EXTRA_CFLAGS=""
+
+        if [ "${{ inputs.compiler }}" = "debian-clang" ]; then
+          EXTRA_CFLAGS="--target=aarch64-linux-gnu"
+        fi
+
+        # --- Thread Management ---
+        CORES=$(nproc --all)
+
+        if [ "${{ inputs.lto_mode }}" = "full" ]; then
+          MAKE_JOBS=2
+        else
+          MAKE_JOBS=$(( CORES / 2 ))
+          [ "$MAKE_JOBS" -lt 2 ] && MAKE_JOBS=2
+        fi
+
+        echo "MAKE_JOBS=$MAKE_JOBS"
+        export LLVM_PARALLEL=1
+
+        echo "Starting build..."
+
+        make -j$MAKE_JOBS ARCH=arm64 O=../out \
+          CC=clang \
+          LD=ld.lld \
+          AR=llvm-ar \
+          NM=llvm-nm \
+          OBJCOPY=llvm-objcopy \
+          OBJDUMP=llvm-objdump \
+          LLVM_IAS=1 \
+          CROSS_COMPILE=aarch64-linux-gnu- \
+          CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+          CLANG_TRIPLE=aarch64-linux-gnu- \
+          LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
+          KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
+          Image.gz Image.gz-dtb dtbs
+
+        # --- Validate ---
+        if [ -f ../out/arch/arm64/boot/Image ] || \
+           [ -f ../out/arch/arm64/boot/Image.gz ] || \
+           [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
+          echo "SUCCESS: Kernel built successfully"
+        else
+          echo "CRITICAL: Build failed"
+          exit 1
+        fi
          
     - name: Collect Output Binaries
       run: |
