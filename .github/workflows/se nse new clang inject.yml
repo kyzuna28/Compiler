@@ -303,7 +303,7 @@ jobs:
          else
              echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
-
+         
     - name: Compile Kernel
       run: |
          cd kernel-dir
@@ -336,25 +336,25 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # --- Manajemen Thread & Resource RAM Dinamis ---
-         # Runner GitHub Actions default memiliki 4 vCPU. 
-         # Jika Full LTO aktif, RAM bawaan (~7GB jika dikurangi swap) sering jebol (OOM) 
-         # saat proses linking driver besar (seperti driver Wi-Fi). Membatasi ke -j2 adalah solusi paling aman.
+          # --- Manajemen Thread & Resource RAM Dinamis ---
+         # Prioritas utama: Mencegah LLVM IO Failure dengan menurunkan concurrency
+         
          if [ "${{ inputs.lto_mode }}" = "full" ]; then
              MAKE_JOBS=2
-             echo "Fitur Full LTO Aktif: Membatasi core menjadi -j2 demi mencegah OOM (Crash RAM)..."
+             echo "Full LTO Aktif: Membatasi core ke -j2 untuk mencegah IO Failure..."
          else
-             MAKE_JOBS=$(nproc --all)
-             echo "Build Normal/Thin LTO: Menggunakan kapasitas penuh runner dengan -j${MAKE_JOBS}..."
+             # Menggunakan pembagi 2 untuk membagi beban (lebih aman daripada nproc penuh)
+             MAKE_JOBS=$(( $(nproc --all) / 2 ))
+             echo "Build Normal: Menggunakan -j${MAKE_JOBS} untuk menjaga stabilitas IO..."
          fi
+         
+         # Tambahan untuk beberapa toolchain (Neutron/WeebX)
+         export LLVM_PARALLEL=1
          
          echo "Memulai proses kompilasi kernel..."
          
-         # --- Eksekusi Utama Kompilasi ---
-         # Menggunakan Process Substitution (2> >(...)) agar:
-         # 1. Log tidak spam oleh warning clang yang tidak perlu.
-         # 2. Log 'LLVM ERROR:' atau fatal error lainnya dari compiler TETAP MUNCUL.
-         # 3. Exit code 100% murni dari kembalian command 'make' (tidak tertelan oleh grep).
+         # Jalankan make tanpa grep yang aneh-aneh dulu
+         # Kalaupun log kotor, kita lihat dulu apakah dia sukses/tidak
          make -j$MAKE_JOBS ARCH=arm64 O=../out \
              CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
