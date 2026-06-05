@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
-name: Non susfs ksun v2 
-run-name: 🚀 ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }}
+name: Non susfs ksun v2
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.kernel-branch }}
 
 on:
   workflow_dispatch:
@@ -117,26 +117,15 @@ jobs:
          else
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
-         
-    - name: Setup Swap Space (16GB)
+    - name: Setup Swap Space (8GB)
       run: |
          sudo swapoff -a || true
          sudo rm -f /mnt/swapfile || true
-         sudo fallocate -l 16G /mnt/swapfile
+         sudo fallocate -l 8G /mnt/swapfile
          sudo chmod 600 /mnt/swapfile
          sudo mkswap /mnt/swapfile
          sudo swapon /mnt/swapfile
-
-    # --- TAMBAHAN UNTUK KECEPATAN: CACHE TOOLCHAIN ---
-    - name: Cache Toolchain
-      id: cache-tc
-      uses: actions/cache@v4
-      with:
-        path: ~/tc
-        key: toolchain-${{ inputs.compiler }}-${{ runner.os }}
-         
     - name: Download Toolchain
-      if: steps.cache-tc.outputs.cache-hit != 'true'
       run: |
          rm -rf $HOME/tc $HOME/tmp-tc && mkdir -p $HOME/tc
          echo "Mengunduh Clang (${{ inputs.compiler }})..."
@@ -191,20 +180,8 @@ jobs:
              ln -sf /usr/bin/llvm-objcopy-21 $HOME/tc/bin/llvm-objcopy
              ln -sf /usr/bin/llvm-objdump-21 $HOME/tc/bin/llvm-objdump
          fi
-
-    # --- TAMBAHAN UNTUK KECEPATAN: CCACHE ---
-    - name: Setup Compiler Cache (CCache)
-      uses: hendrikmuhs/ccache-action@v1.2.14
-      with:
-        key: kernel-build-${{ inputs.compiler }}-${{ inputs.kernel-config }}
-        max-size: "4G"
-         
-    - name: Clone Kernel Source & Init Submodules
-      run: |
-         git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
-         cd kernel-dir
-         echo "Melakukan inisialisasi git submodule..."
-         git submodule update --init --recursive
+    - name: Clone Kernel Source
+      run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
 
     - name: Apply Kernel Config
       run: |
@@ -315,12 +292,10 @@ jobs:
          else
              echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
-         
     - name: Compile Kernel
       run: |
          cd kernel-dir
-         # --- TAMBAHAN UNTUK KECEPATAN: TAMBAH PATH CCACHE ---
-         export PATH="/usr/lib/ccache:$HOME/tc/bin:$PATH"
+         export PATH=$HOME/tc/bin:$PATH
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
          export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
@@ -341,24 +316,17 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # --- TAMBAHAN UNTUK KECEPATAN: BIKIN FOLDER THINLTO BIAR GA ERROR ---
-         mkdir -p ../out/.thinlto-cache
-         
-         # --- TAMBAHAN UNTUK KECEPATAN: PAKAI CCACHE DI CC= ---
-         make -j$(nproc --all) ARCH=arm64 O=../out \
-             CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM=1 LLVM_IAS=1 \
+         make -j4 ARCH=arm64 O=../out \
+             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-             LDFLAGS_vmlinux="-mllvm -reduce-memory-footprint -mllvm -thinlto-jobs=4 --thinlto-cache-dir=../out/.thinlto-cache" \
              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-             KCFLAGS="-w -Wno-error -fno-builtin -fcommon -fno-strict-aliasing -fno-delete-null-pointer-checks $EXTRA_CFLAGS" \
+             KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
              Image.gz Image.gz-dtb dtbs \
-             2>&1 | grep -v "clang: warning:" \
-             | grep -v "IO failure on output stream: Broken pipe"
+             2>&1 | grep -v "clang: warning:" | grep -v "LLVM ERROR:"
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "Build Failed!" && exit 1
          fi
-         
     - name: Collect Output Binaries
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
@@ -373,7 +341,6 @@ jobs:
               fi
           fi
           [ -f "dtbo.img" ] && cp dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img || true
-          
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
