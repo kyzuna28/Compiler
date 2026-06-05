@@ -327,7 +327,7 @@ jobs:
          
          if [ "${{ inputs.lto_mode }}" = "thin" ]; then
              mkdir -p ../out/.thinlto-cache
-             CUSTOM_LDFLAGS="-mllvm -reduce-memory-footprint -mllvm -thinlto-jobs=4 --thinlto-cache-dir=../out/.thinlto-cache"
+             CUSTOM_LDFLAGS="--thinlto-jobs=4 --thinlto-cache-dir=../out/.thinlto-cache"
              MAKE_JOBS=4 # Batasi kompilasi ke 4 threads agar RAM stabil
              echo "ThinLTO aktif: LDFLAGS diinjeksi, membatasi jobs ke-4..."
          elif [ "${{ inputs.lto_mode }}" = "full" ]; then
