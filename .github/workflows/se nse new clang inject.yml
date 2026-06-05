@@ -307,11 +307,16 @@ jobs:
     - name: Compile Kernel
       run: |
          cd kernel-dir
+         
+         # Pastikan skrip langsung gagal jika ada command pipeline yang error
+         set -o pipefail
+         
          export PATH=$HOME/tc/bin:$PATH
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
          export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
          
+         # --- Handle Version Hash ---
          if [ "${{ inputs.version_hash }}" = "disable" ]; then
              echo "" > .scmversion
              export LOCALVERSION_AUTO=""
@@ -319,7 +324,10 @@ jobs:
              rm -f .scmversion
          fi
          
+         # Bersihkan out directory lama
          rm -rf ../out && mkdir -p ../out
+         
+         # Generate Defconfig
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
@@ -328,24 +336,39 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # --- Sistem Alokasi Thread Dinamis untuk Menjamin Full LTO Lolos ---
-         MAKE_JOBS=4
+         # --- Manajemen Thread & Resource RAM Dinamis ---
+         # Runner GitHub Actions default memiliki 4 vCPU. 
+         # Jika Full LTO aktif, RAM bawaan (~7GB jika dikurangi swap) sering jebol (OOM) 
+         # saat proses linking driver besar (seperti driver Wi-Fi). Membatasi ke -j2 adalah solusi paling aman.
          if [ "${{ inputs.lto_mode }}" = "full" ]; then
              MAKE_JOBS=2
-             echo "Full LTO Aktif: Membatasi core menjadi -j2 demi mencegah gangguan OOM pada driver Wi-Fi..."
+             echo "Fitur Full LTO Aktif: Membatasi core menjadi -j2 demi mencegah OOM (Crash RAM)..."
+         else
+             MAKE_JOBS=$(nproc --all)
+             echo "Build Normal/Thin LTO: Menggunakan kapasitas penuh runner dengan -j${MAKE_JOBS}..."
          fi
          
-         # Ditambahkan: -Os dan -fomit-frame-pointer untuk optimasi ukuran ekstrem
+         echo "Memulai proses kompilasi kernel..."
+         
+         # --- Eksekusi Utama Kompilasi ---
+         # Menggunakan Process Substitution (2> >(...)) agar:
+         # 1. Log tidak spam oleh warning clang yang tidak perlu.
+         # 2. Log 'LLVM ERROR:' atau fatal error lainnya dari compiler TETAP MUNCUL.
+         # 3. Exit code 100% murni dari kembalian command 'make' (tidak tertelan oleh grep).
          make -j$MAKE_JOBS ARCH=arm64 O=../out \
              CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
              KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
              Image.gz Image.gz-dtb dtbs \
-             2>&1 | grep -v "clang: warning:" | grep -v "LLVM ERROR:"
+             2> >(grep -v "clang: warning:" >&2)
          
+         # --- Validasi Hasil Akhir ---
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
-             echo "Build Failed!" && exit 1
+             echo "CRITICAL: Kompilasi selesai tetapi binary kernel tidak ditemukan. Build Gagal!"
+             exit 1
+         else
+             echo "SUCCESS: Kernel berhasil dikompilasi dengan sukses!"
          fi
 
     - name: Collect Output Binaries
