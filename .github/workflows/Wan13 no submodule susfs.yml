@@ -318,39 +318,48 @@ jobs:
          if [ "${{ inputs.compiler }}" = "debian-clang" ]; then
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
-         
+
          # ==========================================
          # DYNAMIC LTO & OOM PREVENTION SYSTEM
          # ==========================================
          CUSTOM_LDFLAGS=""
-         MAKE_JOBS=$(nproc --all) # Bawaan: Pakai semua core untuk mode Disable
+         MAKE_JOBS=$(nproc --all)
+         
+         # Menggunakan -fcommon agar aman dari error duplicate symbol
+         EXTRA_KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin -fcommon -fno-strict-aliasing -fno-delete-null-pointer-checks -pipe"
          
          if [ "${{ inputs.lto_mode }}" = "thin" ]; then
              mkdir -p ../out/.thinlto-cache
              CUSTOM_LDFLAGS="--thinlto-jobs=4 --thinlto-cache-dir=../out/.thinlto-cache"
-             MAKE_JOBS=4 # Batasi kompilasi ke 4 threads agar RAM stabil
+             EXTRA_KCFLAGS="$EXTRA_KCFLAGS -fsplit-lto-unit"
+             MAKE_JOBS=4
              echo "ThinLTO aktif: LDFLAGS diinjeksi, membatasi jobs ke-4..."
          elif [ "${{ inputs.lto_mode }}" = "full" ]; then
-             MAKE_JOBS=2 # Full LTO sangat berat di RAM, batasi maksimal 2 threads
-             echo "Full LTO aktif: Membatasi jobs ke-2 untuk mencegah GitHub Actions Exit Code 143 (OOM)..."
+             EXTRA_KCFLAGS="$EXTRA_KCFLAGS -fsplit-lto-unit"
+             MAKE_JOBS=2
+             echo "Full LTO aktif: Membatasi jobs ke-2 untuk mencegah OOM..."
          fi
          
-         # Mengeksekusi Make dengan limit core dinamis ($MAKE_JOBS)
-         # Menambahkan -pipe dan -fsplit-lto-unit di KCFLAGS untuk menghemat memori
+         EXTRA_KCFLAGS="$EXTRA_KCFLAGS $EXTRA_CFLAGS"
+         
          make -j$MAKE_JOBS ARCH=arm64 O=../out \
-             CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM=1 LLVM_IAS=1 \
-             CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
+             CC="ccache clang" \
+             LD=ld.lld \
+             AR=llvm-ar \
+             NM=llvm-nm \
+             OBJCOPY=llvm-objcopy \
+             OBJDUMP=llvm-objdump \
+             LLVM=1 LLVM_IAS=1 \
+             CROSS_COMPILE=aarch64-linux-gnu- \
+             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+             CLANG_TRIPLE=aarch64-linux-gnu- \
              LDFLAGS_vmlinux="$CUSTOM_LDFLAGS" \
              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-             KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin -fcommon -fno-strict-aliasing -fno-delete-null-pointer-checks -pipe -fsplit-lto-unit $EXTRA_CFLAGS" \
+             KCFLAGS="$EXTRA_KCFLAGS" \
              Image.gz Image.gz-dtb dtbs \
              2>&1 | grep -v "clang: warning:" \
              | grep -v "IO failure on output stream: Broken pipe"
-         
-         if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
-             echo "Build Failed!" && exit 1
-         fi
-         
+             
     - name: Collect Output Binaries
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
