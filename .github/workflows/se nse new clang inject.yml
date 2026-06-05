@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
-name: Non susfs ksun
-run-name: 🚀 ${{ inputs.kernel_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }}
+name: Non susfs ksun - Final v2
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.kernel-branch }}
 
 on:
   workflow_dispatch:
@@ -270,29 +270,29 @@ jobs:
              echo "CONFIG_OVERLAY_FS=y" >> $TARGET_CONFIG
          fi
          
-         # ROM Optimization
+         # --- ROM Optimization ---
          if [ "${{ inputs.rom_optimization }}" = "MIUI" ]; then
              for cfg in KCAL_EQ SOUND_CONTROL USB_FASTCHARGE DEVFREQ_GOV_MSM_ADRENO_TZ ZRAM ZCOMP CRYPTO_ZSTD ZRAM_DEF_COMP_ZSTD SIMPLE_LMK IOSCHED_MAPLE DEFAULT_MAPLE F2FS_FS EXFAT_FS BOEFFLA_WL_BLOCKER STATE_NOTIFIER POWER_SUSPEND POWER_SUSPEND_STATE NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL; do
                  echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
              done
-             for cfg in MSM_KGSL_BATT_STATS DEBUG_KERNEL PROVE_LOCKING; do
-                 sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" $TARGET_CONFIG || true
-             done
-             echo "CONFIG_MI_LOG_PRINT=n" >> $TARGET_CONFIG
-             echo "CONFIG_MSM_SMD_DEBUG=n" >> $TARGET_CONFIG
-             echo "CONFIG_DEBUG_INFO=n" >> $TARGET_CONFIG
          elif [ "${{ inputs.rom_optimization }}" = "AOSP" ]; then
              for cfg in KCAL_EQ SOUND_CONTROL USB_FASTCHARGE INPUT_TOUCHSCREEN DEVFREQ_GOV_MSM_ADRENO_TZ IOSCHED_ZEN DEFAULT_ZEN F2FS_FS EXFAT_FS SIMPLE_LMK TCP_CONG_BBR DEFAULT_BBR NET_SCH_FQ NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL; do
                  echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
              done
              echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> $TARGET_CONFIG
-             for cfg in MSM_KGSL_BATT_STATS DEBUG_KERNEL PROVE_LOCKING; do
-                 sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" $TARGET_CONFIG || true
-             done
-             echo "CONFIG_DEBUG_INFO=n" >> $TARGET_CONFIG
          fi
+
+         # --- Global Size Reduction (Menghapus Debugging & Modul Tak Terpakai) ---
+         echo "Menerapkan Optimasi Ekstrem Ukuran Kernel..."
+         for cfg in DEBUG_INFO DEBUG_KERNEL PROVE_LOCKING BUG COREDUMP ELF_CORE SLUB_DEBUG MSM_KGSL_BATT_STATS MI_LOG_PRINT MSM_SMD_DEBUG; do
+             sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" $TARGET_CONFIG || true
+             echo "# CONFIG_$cfg is not set" >> $TARGET_CONFIG
+         done
+         echo "CONFIG_DEBUG_INFO_NONE=y" >> $TARGET_CONFIG
+         echo "CONFIG_BUILD_ARM64_DT_BINARIES=y" >> $TARGET_CONFIG
+         echo "CONFIG_DTB_COMPRESSION=y" >> $TARGET_CONFIG
          
-         # LTO Configuration
+         # --- LTO Configuration ---
          for lto in LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE; do
              sed -i "s/CONFIG_$lto=.*/# CONFIG_$lto is not set/g" $TARGET_CONFIG || true
          done
@@ -335,11 +335,12 @@ jobs:
              echo "Full LTO Aktif: Membatasi core menjadi -j2 demi mencegah gangguan OOM pada driver Wi-Fi..."
          fi
          
+         # Ditambahkan: -Os dan -fomit-frame-pointer untuk optimasi ukuran ekstrem
          make -j$MAKE_JOBS ARCH=arm64 O=../out \
              CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-             KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
+             KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
              Image.gz Image.gz-dtb dtbs \
              2>&1 | grep -v "clang: warning:" | grep -v "LLVM ERROR:"
          
