@@ -358,7 +358,8 @@ jobs:
           CLANG_TRIPLE=aarch64-linux-gnu- \
           LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
           KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
-          Image.gz Image.gz-dtb dtbs
+          Image.gz Image.gz-dtb dtbs \
+          2> >(grep -v "clang: warning:" | grep -v "Broken pipe" >&2)
 
         # --- RESULT CHECK ---
         if ls ../out/arch/arm64/boot/Image* >/dev/null 2>&1; then
