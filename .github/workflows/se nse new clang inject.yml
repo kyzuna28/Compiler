@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
 name: Non susfs ksun
-run-name: 🚀 ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }}
+run-name: 🚀 ${{ inputs.kernel_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }}
 
 on:
   workflow_dispatch:
@@ -103,7 +103,7 @@ jobs:
          sudo timedatectl set-timezone Asia/Jakarta
          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
          sudo docker image prune --all --force
-         
+
     - name: Checkout Repository
       uses: actions/checkout@v4
 
@@ -118,25 +118,23 @@ jobs:
          else
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
-         
-    - name: Setup Swap Space (16GB)
+
+    - name: Setup Dynamic Swap Space (Up to 16GB)
       run: |
          sudo swapoff -a || true
          sudo rm -f /mnt/swapfile || true
-         sudo fallocate -l 16G /mnt/swapfile
+         if [ "${{ inputs.lto_mode }}" = "full" ]; then
+             echo "Full LTO terdeteksi: Mengalokasikan Swap 16GB untuk mencegah OOM..."
+             sudo fallocate -l 16G /mnt/swapfile
+         else
+             echo "Mengalokasikan Swap standar 8GB..."
+             sudo fallocate -l 8G /mnt/swapfile
+         fi
          sudo chmod 600 /mnt/swapfile
          sudo mkswap /mnt/swapfile
          sudo swapon /mnt/swapfile
 
-    - name: Cache Toolchain
-      id: cache-tc
-      uses: actions/cache@v4
-      with:
-        path: ~/tc
-        key: toolchain-${{ inputs.compiler }}-${{ runner.os }}
-         
     - name: Download Toolchain
-      if: steps.cache-tc.outputs.cache-hit != 'true'
       run: |
          rm -rf $HOME/tc $HOME/tmp-tc && mkdir -p $HOME/tc
          echo "Mengunduh Clang (${{ inputs.compiler }})..."
@@ -192,17 +190,11 @@ jobs:
              ln -sf /usr/bin/llvm-objdump-21 $HOME/tc/bin/llvm-objdump
          fi
 
-    - name: Setup Compiler Cache (CCache)
-      uses: hendrikmuhs/ccache-action@v1.2.14
-      with:
-        key: kernel-build-${{ inputs.compiler }}-${{ inputs.kernel-config }}
-        max-size: "4G"
-         
     - name: Clone Kernel Source & Init Submodules
       run: |
          git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
          cd kernel-dir
-         echo "Melakukan inisialisasi git submodule..."
+         echo "Melakukan inisialisasi git submodule secara rekursif..."
          git submodule update --init --recursive
 
     - name: Apply Kernel Config
@@ -237,7 +229,6 @@ jobs:
          
          CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
          echo "Hasil format string compiler baru: $CUSTOM_COMPILER_STRING"
-         
          echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
          
          sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
@@ -254,7 +245,6 @@ jobs:
              wget https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
              patch -p1 < kernel-4.4_4.9.patch || echo "Patch manual hook terlewat atau gagal diterapkan"
              
-             # Eksekusi Skrip Setup berdasarkan Pilihan User
              if [ "${{ inputs.kernelsu }}" = "manager-3.0" ]; then
                  curl https://raw.githubusercontent.com/ThRE-Team/Next-v3/refs/heads/main/setup.sh | bash
              elif [ "${{ inputs.kernelsu }}" = "all-3.1" ]; then
@@ -267,7 +257,6 @@ jobs:
              echo "CONFIG_KSU_MANUAL_HOOK=y" >> $TARGET_CONFIG
              echo "CONFIG_OVERLAY_FS=y" >> $TARGET_CONFIG
              
-             # Matikan KPROBES untuk KernelSU dengan Manual Hook agar tidak bentrok
              sed -i 's/CONFIG_KPROBES=y/# CONFIG_KPROBES is not set/g' $TARGET_CONFIG || true
              sed -i 's/CONFIG_HAVE_KPROBES=y/# CONFIG_HAVE_KPROBES is not set/g' $TARGET_CONFIG || true
              echo "# CONFIG_KPROBES is not set" >> $TARGET_CONFIG
@@ -314,11 +303,11 @@ jobs:
          else
              echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
-         
+
     - name: Compile Kernel
       run: |
          cd kernel-dir
-         export PATH="/usr/lib/ccache:$HOME/tc/bin:$PATH"
+         export PATH=$HOME/tc/bin:$PATH
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project"
          export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
@@ -339,56 +328,25 @@ jobs:
              EXTRA_CFLAGS="--target=aarch64-linux-gnu"
          fi
          
-         # ==========================================
-         # DYNAMIC LTO & OOM PREVENTION SYSTEM
-         # ==========================================
-         CUSTOM_LDFLAGS=""
-         MAKE_JOBS=$(nproc --all)
-         
-         # Menggunakan -fcommon agar aman dari error duplicate symbol
-         EXTRA_KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin -fcommon -fno-strict-aliasing -fno-delete-null-pointer-checks -pipe"
-         
-         if [ "${{ inputs.lto_mode }}" = "thin" ]; then
-             mkdir -p ../out/.thinlto-cache
-             CUSTOM_LDFLAGS="--thinlto-jobs=4 --thinlto-cache-dir=../out/.thinlto-cache"
-             EXTRA_KCFLAGS="$EXTRA_KCFLAGS -fsplit-lto-unit"
-             MAKE_JOBS=4
-             echo "ThinLTO aktif: LDFLAGS diinjeksi, membatasi jobs ke-4..."
-         elif [ "${{ inputs.lto_mode }}" = "full" ]; then
-             EXTRA_KCFLAGS="$EXTRA_KCFLAGS -fsplit-lto-unit"
+         # --- Sistem Alokasi Thread Dinamis untuk Menjamin Full LTO Lolos ---
+         MAKE_JOBS=4
+         if [ "${{ inputs.lto_mode }}" = "full" ]; then
              MAKE_JOBS=2
-             echo "Full LTO aktif: Membatasi jobs ke-2 untuk mencegah OOM..."
+             echo "Full LTO Aktif: Membatasi core menjadi -j2 demi mencegah gangguan OOM pada driver Wi-Fi..."
          fi
          
-         EXTRA_KCFLAGS="$EXTRA_KCFLAGS $EXTRA_CFLAGS"
-         
-         # Menambahkan filter grep -v untuk menyembunyikan log spamming warning
          make -j$MAKE_JOBS ARCH=arm64 O=../out \
-             CC="ccache clang" \
-             LD=ld.lld \
-             AR=llvm-ar \
-             NM=llvm-nm \
-             OBJCOPY=llvm-objcopy \
-             OBJDUMP=llvm-objdump \
-             LLVM=1 LLVM_IAS=1 \
-             HOSTCFLAGS="-Wno-unused-variable -Wno-unused-value" \
-             CROSS_COMPILE=aarch64-linux-gnu- \
-             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-             CLANG_TRIPLE=aarch64-linux-gnu- \
-             LDFLAGS_vmlinux="$CUSTOM_LDFLAGS" \
+             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump LLVM_IAS=1 \
+             CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
-             KCFLAGS="$EXTRA_KCFLAGS" \
+             KCFLAGS="-w -Qunused-arguments -Wno-error -fno-builtin $EXTRA_CFLAGS" \
              Image.gz Image.gz-dtb dtbs \
-             2>&1 | grep -v "clang: warning:" \
-             | grep -v "IO failure on output stream: Broken pipe" \
-             | grep -v "is COMMON symbol" \
-             | grep -v "set but not used" \
-             | grep -v "warning:"
-             
+             2>&1 | grep -v "clang: warning:" | grep -v "LLVM ERROR:"
+         
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "Build Failed!" && exit 1
          fi
-         
+
     - name: Collect Output Binaries
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
@@ -403,12 +361,10 @@ jobs:
               fi
           fi
           [ -f "dtbo.img" ] && cp dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img || true
-          
+
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/**
-        compression-level: 9
-        retention-days: 30
         
