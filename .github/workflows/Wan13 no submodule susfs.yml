@@ -342,6 +342,7 @@ jobs:
          
          EXTRA_KCFLAGS="$EXTRA_KCFLAGS $EXTRA_CFLAGS"
          
+         # Menambahkan filter grep -v untuk menyembunyikan log spamming warning
          make -j$MAKE_JOBS ARCH=arm64 O=../out \
              CC="ccache clang" \
              LD=ld.lld \
@@ -358,8 +359,14 @@ jobs:
              KCFLAGS="$EXTRA_KCFLAGS" \
              Image.gz Image.gz-dtb dtbs \
              2>&1 | grep -v "clang: warning:" \
-             | grep -v "IO failure on output stream: Broken pipe"
+             | grep -v "IO failure on output stream: Broken pipe" \
+             | grep -v "is COMMON symbol" \
+             | grep -v "set but not used"
              
+         if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
+             echo "Build Failed!" && exit 1
+         fi
+          
     - name: Collect Output Binaries
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
