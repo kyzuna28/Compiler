@@ -38,38 +38,38 @@ on:
         - debian-clang
       lto_mode:
         description: 'LTO Optimization'
-        default: 'disable'
+        default: 'no lto'
         required: true
         type: choice
         options:
-        - disable
+        - no lto
         - full
         - thin
       rom_optimization:
         description: 'ROM Specific Tweaks'
-        default: 'disable'
+        default: 'no tweak'
         required: true
         type: choice
         options:
         - AOSP
         - MIUI
-        - disable
+        - no tweak
       apatch_mode:
-        description: 'Mode APatch (Enable = APatch)'
-        default: 'disable'
+        description: 'Mode APatch (APatch)'
+        default: 'no apatch'
         required: true
         type: choice
         options:
-        - enable
-        - disable
+        - apatch
+        - no apatch
       version_hash:
         description: 'Include Version Hash'
-        default: 'disable'
+        default: 'no hash'
         required: true
         type: choice
         options:
-        - disable
-        - enable
+        - no hash
+        - hash
       kernel-url:
         description: 'Kernel Source URL'
         default: 'https://github.com/kyzuna28/wan13.git'
@@ -229,7 +229,7 @@ jobs:
         done
 
         # --- APatch Configurations ---
-        if [ "${{ inputs.apatch_mode }}" = "enable" ]; then
+        if [ "${{ inputs.apatch_mode }}" = "apatch" ]; then
           echo "CONFIG_KALLSYMS=y" >> $TARGET_CONFIG
           echo "CONFIG_KALLSYMS_ALL=y" >> $TARGET_CONFIG
           echo "CONFIG_KALLSYMS_BASE_RELATIVE=y" >> $TARGET_CONFIG
@@ -283,7 +283,7 @@ jobs:
         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
 
         # --- SCM Version Handling ---
-        if [ "${{ inputs.version_hash }}" = "disable" ]; then
+        if [ "${{ inputs.version_hash }}" = "no hash" ]; then
           echo "" > .scmversion
           export LOCALVERSION_AUTO=""
         else
