@@ -294,15 +294,15 @@ jobs:
     - name: Compile Kernel
       run: |
         cd kernel-dir
-        
         set -euo pipefail
         
+        # --- Environment Setup ---
         export PATH=$HOME/tc/bin:$PATH
         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-        export KBUILD_BUILD_HOST="project"
+        export KBUILD_BUILD_HOST="GitHub-Actions"
         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
 
-        # --- Version handling ---
+        # --- SCM Version Handling ---
         if [ "${{ inputs.version_hash }}" = "disable" ]; then
           echo "" > .scmversion
           export LOCALVERSION_AUTO=""
@@ -310,22 +310,20 @@ jobs:
           rm -f .scmversion
         fi
 
-        # Clean output directory
+        # --- Prepare Output Directory ---
         rm -rf ../out && mkdir -p ../out
 
-        # Generate defconfig
+        # --- Generate Configuration ---
+        echo "🛠️ Generating defconfig: ${{ inputs.kernel-config }}..."
         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
 
-        CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
+        # --- Compiler Flags & Core Management ---
         EXTRA_CFLAGS=""
-
         if [ "${{ inputs.compiler }}" = "debian-clang" ]; then
           EXTRA_CFLAGS="--target=aarch64-linux-gnu"
         fi
 
-        # --- SAFE THREAD MANAGEMENT ---
         CORES=$(nproc --all)
-
         if [ "${{ inputs.lto_mode }}" = "full" ]; then
           MAKE_JOBS=2
         else
@@ -334,11 +332,12 @@ jobs:
           [ "$MAKE_JOBS" -gt 8 ] && MAKE_JOBS=8
         fi
 
-        echo "CORES=$CORES | MAKE_JOBS=$MAKE_JOBS"
-
+        echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
         export LLVM_PARALLEL=1
 
-        echo "Starting kernel build..."
+        # --- Compilation Process ---
+        echo "📦 Starting kernel compilation..."
+        CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
 
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
           CC=clang \
@@ -356,67 +355,54 @@ jobs:
           Image.gz Image.gz-dtb dtbs \
           2> >(grep --line-buffered -vE "clang: warning:|ld.lld: warning:|Broken pipe" >&2)
           
-          # RESULT CHECK (HARUS SETELAH BUILD)
-          KERNEL_DIR="../out/arch/arm64/boot"
-          
-          if [ -s "$KERNEL_DIR/Image.gz-dtb" ] || [ -s "$KERNEL_DIR/Image.gz" ]; then
-            echo "SUCCESS: Kernel build completed"
-          else
-            echo "FAILED: Kernel image not found or empty"
-            echo "Dump:"
-            ls -lh "$KERNEL_DIR" 2>/dev/null || true
-            exit 1
-          fi
-          
+        # --- Build Verification ---
+        KERNEL_DIR="../out/arch/arm64/boot"
+        if [ -s "$KERNEL_DIR/Image.gz-dtb" ] || [ -s "$KERNEL_DIR/Image.gz" ]; then
+          echo "✅ SUCCESS: Kernel compilation completed successfully!"
+        else
+          echo "❌ ERROR: Kernel image compilation failed or file is empty."
+          ls -lh "$KERNEL_DIR" 2>/dev/null || true
+          exit 1
+        fi
+
     - name: Collect Output Binaries
       run: |
         set -euo pipefail
-
-        echo "========================================"
-        echo "📦 Mengumpulkan file hasil build..."
-        echo "========================================"
-
+        
         KERNEL_DIR="out/arch/arm64/boot"
         OUT_DIR="$GITHUB_WORKSPACE/kernel_binaries"
         mkdir -p "$OUT_DIR"
 
-        # Kernel Utama (Wajib)
+        echo "📦 Collecting output binaries..."
+
+        # Main Kernel Target
         if [ -f "$KERNEL_DIR/Image.gz-dtb" ]; then
           cp "$KERNEL_DIR/Image.gz-dtb" "$OUT_DIR/"
-          echo "✅ Image.gz-dtb disalin"
+          echo "  -> Image.gz-dtb [Copied]"
         elif [ -f "$KERNEL_DIR/Image.gz" ]; then
           cp "$KERNEL_DIR/Image.gz" "$OUT_DIR/"
-          echo "✅ Image.gz disalin"
+          echo "  -> Image.gz [Copied]"
         else
-          echo "❌ ERROR: Kernel image tidak ditemukan!"
-          ls -la "$KERNEL_DIR" || true
+          echo "❌ ERROR: Critical kernel image missing!"
           exit 1
         fi
 
-        # File Tambahan (Opsional)
-        echo "🔍 Memeriksa file tambahan..."
-        [ -f "$KERNEL_DIR/dtbo.img" ] && cp "$KERNEL_DIR/dtbo.img" "$OUT_DIR/" && echo "✅ dtbo.img disalin" || true
-        [ -f "$KERNEL_DIR/dtb.img" ] && cp "$KERNEL_DIR/dtb.img" "$OUT_DIR/" && echo "✅ dtb.img disalin" || true
+        # Optional Targets
+        [ -f "$KERNEL_DIR/dtbo.img" ] && cp "$KERNEL_DIR/dtbo.img" "$OUT_DIR/" && echo "  -> dtbo.img [Copied]" || true
+        [ -f "$KERNEL_DIR/dtb.img" ] && cp "$KERNEL_DIR/dtb.img" "$OUT_DIR/" && echo "  -> dtb.img [Copied]" || true
 
         if [ -d "$KERNEL_DIR/dtb" ]; then
           mkdir -p "$OUT_DIR/dtb"
           cp -a "$KERNEL_DIR/dtb/." "$OUT_DIR/dtb/" 2>/dev/null || true
-          echo "✅ Folder dtb disalin"
+          echo "  -> dtb folder [Copied]"
         fi
 
-        # Ringkasan Akhir
-        echo "========================================"
-        echo "✅ Collect selesai"
-        echo "📊 Total Size: $(du -sh "$OUT_DIR" | cut -f1)"
-        echo "========================================"
-
-        echo "📂 Daftar File Akhir:"
-        ls -lhR "$OUT_DIR"
+        echo "📊 Total Artifact Size: $(du -sh "$OUT_DIR" | cut -f1)"
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.kernel_name }}-${{ inputs.rom_type }}-${{ inputs.compiler }}-LTO_${{ inputs.lto_mode }}-Opt_${{ inputs.rom_optimization }}-Root_${{ inputs.kernelsu }}-Hash_${{ inputs.version_hash }}"
+        name: "${{ inputs.kernel_name }}-${{ inputs.rom_type }}-${{ inputs.compiler }}-LTO_${{ inputs.lto_mode }}-Root_${{ inputs.kernelsu }}"
         path: kernel_binaries/*
         if-no-files-found: error
         
