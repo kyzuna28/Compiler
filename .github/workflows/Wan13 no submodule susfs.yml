@@ -336,7 +336,7 @@ jobs:
           KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
           KGZIP="gzip -8" \
           Image.gz Image.gz-dtb dtbs \
-          2> >(grep -v "clang: warning:" | grep -v "Broken pipe" >&2)
+          2> >(grep --line-buffered -vE "clang: warning:|ld.lld: warning:|Broken pipe" >&2)
 
         # --- RESULT CHECK ---
         if ls ../out/arch/arm64/boot/Image* >/dev/null 2>&1; then
