@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
-name: Tester
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.kernel-branch }}
+name: Non susfs ksun
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.version_hash }}
 
 on:
   workflow_dispatch:
@@ -87,7 +87,7 @@ on:
         type: string
       kernel-config:
         description: 'Kernel Defconfig'
-        default: 'defconfig'
+        default: 'beryllium_defconfig'
         required: true
         type: string
 
