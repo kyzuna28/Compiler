@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
 name: susfs/include wan13
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.apatch_mode }}
+run-name: 🚀 ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.apatch_mode }}
 
 on:
   workflow_dispatch:
@@ -8,11 +8,6 @@ on:
       ubuntu:
         description: 'Ubuntu Version'
         default: 'ubuntu-24.04'
-        required: true
-        type: string
-      zip_name:
-        description: 'Zip Output Name'
-        default: 'Wan13'
         required: true
         type: string
       kernel_name:
@@ -339,6 +334,7 @@ jobs:
           CLANG_TRIPLE=aarch64-linux-gnu- \
           LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
           KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
+          GZIP=-8 \
           Image.gz Image.gz-dtb dtbs \
           2> >(grep -v "clang: warning:" | grep -v "Broken pipe" >&2)
 
@@ -368,6 +364,7 @@ jobs:
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
+        name: "${{ inputs.zip_name }}-${{ inputs.kernel_name }}-${{ inputs.rom_type }}-${{ inputs.compiler }}-LTO_${{ inputs.lto_mode }}-Opt_${{ inputs.rom_optimization }}-Apatch_${{ inputs.apatch_mode }}-Hash_${{ inputs.version_hash }}"
         path: kernel_binaries/**
+        compression-level: 8
         
