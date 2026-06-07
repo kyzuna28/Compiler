@@ -37,22 +37,22 @@ on:
         - debian-clang
       lto_mode:
         description: 'LTO Optimization'
-        default: 'disable'
+        default: 'no lto'
         required: true
         type: choice
         options:
-        - disable
+        - no lto
         - full
         - thin
       rom_optimization:
         description: 'ROM Specific Tweaks'
-        default: 'disable'
+        default: 'no tweak'
         required: true
         type: choice
         options:
         - AOSP
         - MIUI
-        - disable
+        - no tweak
       kernelsu:
         description: 'Mode Root (False = APatch)'
         default: 'false'
@@ -62,15 +62,15 @@ on:
         - manager-3.0
         - all-3.1
         - next-3.2
-        - "false"
+        - "apatch"
       version_hash:
         description: 'Include Version Hash'
-        default: 'disable'
+        default: 'no hash'
         required: true
         type: choice
         options:
-        - disable
-        - enable
+        - no hash
+        - hash
       kernel-url:
         description: 'Kernel Source URL'
         default: 'https://github.com/kyzuna28/wan13.git'
@@ -230,7 +230,7 @@ jobs:
         done
 
         # --- KSU & APatch Configurations ---
-        if [ "${{ inputs.kernelsu }}" != "false" ]; then
+        if [ "${{ inputs.kernelsu }}" != "apatch" ]; then
           wget https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
           patch -p1 < kernel-4.4_4.9.patch || echo "Patch manual hook skipped"
 
@@ -303,7 +303,7 @@ jobs:
         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
 
         # --- SCM Version Handling ---
-        if [ "${{ inputs.version_hash }}" = "disable" ]; then
+        if [ "${{ inputs.version_hash }}" = "no hash" ]; then
           echo "" > .scmversion
           export LOCALVERSION_AUTO=""
         else
