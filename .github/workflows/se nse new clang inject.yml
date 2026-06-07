@@ -354,7 +354,7 @@ jobs:
           CLANG_TRIPLE=aarch64-linux-gnu- \
           LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
           KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
-          GZIP=-8 \
+          KGZIP="gzip -8" \
           Image.gz Image.gz-dtb dtbs \
           2> >(grep -v "clang: warning:" | grep -v "Broken pipe" >&2)
           
