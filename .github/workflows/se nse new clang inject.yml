@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
 name: Non susfs ksun
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }}
+run-name: 🚀 ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }}
 
 on:
   workflow_dispatch:
@@ -8,10 +8,6 @@ on:
       ubuntu:
         description: 'Ubuntu Version'
         default: 'ubuntu-24.04'
-        required: true
-        type: string
-      zip_name:
-        description: 'Zip Output Name'
         required: true
         type: string
       kernel_name:
