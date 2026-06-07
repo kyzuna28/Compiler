@@ -63,7 +63,7 @@ on:
         - all-3.1
         - next-3.2
         - apatch
-        - "no su"
+        - "resu"
       version_hash:
         description: 'Include Version Hash'
         default: 'no hash'
@@ -259,8 +259,8 @@ jobs:
           echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
           echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
           echo "CONFIG_OVERLAY_FS=y" >> $TARGET_CONFIG
-        elif [ "${{ inputs.kernelsu }}" = "no su" ]; then
-          echo "⚠️ Pilihan 'no su' terdeteksi. Melewati konfigurasi KernelSU dan APatch..."
+        elif [ "${{ inputs.kernelsu }}" = "resu" ]; then
+          echo "⚠️ Pilihan 'resu' terdeteksi. Melewati konfigurasi KernelSU dan APatch..."
         else
           wget https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
           patch -p1 < kernel-4.4_4.9.patch || echo "Patch manual hook skipped"
