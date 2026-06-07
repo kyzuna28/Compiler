@@ -294,10 +294,9 @@ jobs:
     - name: Compile Kernel
       run: |
         cd kernel-dir
-
-        set -e
-        set -o pipefail
-
+        
+        set -euo pipefail
+        
         export PATH=$HOME/tc/bin:$PATH
         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
         export KBUILD_BUILD_HOST="project"
@@ -357,14 +356,18 @@ jobs:
           Image.gz Image.gz-dtb dtbs \
           2> >(grep --line-buffered -vE "clang: warning:|ld.lld: warning:|Broken pipe" >&2)
           
-        # --- RESULT CHECK ---
-        if ls ../out/arch/arm64/boot/Image* >/dev/null 2>&1; then
-          echo "SUCCESS: Kernel build completed"
-        else
-          echo "FAILED: Kernel build error"
-          exit 1
-        fi
-
+          # RESULT CHECK (HARUS SETELAH BUILD)
+          KERNEL_DIR="../out/arch/arm64/boot"
+          
+          if [ -s "$KERNEL_DIR/Image.gz-dtb" ] || [ -s "$KERNEL_DIR/Image.gz" ]; then
+            echo "SUCCESS: Kernel build completed"
+          else
+            echo "FAILED: Kernel image not found or empty"
+            echo "Dump:"
+            ls -lh "$KERNEL_DIR" 2>/dev/null || true
+            exit 1
+          fi
+      
     - name: Collect Output Binaries
       run: |
         set -euo pipefail
