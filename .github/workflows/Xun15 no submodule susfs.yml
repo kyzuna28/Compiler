@@ -274,16 +274,15 @@ jobs:
     - name: Compile Kernel
       run: |
         cd kernel-dir
-
-        set -e
-        set -o pipefail
-
+        set -euo pipefail
+        
+        # --- Environment Setup ---
         export PATH=$HOME/tc/bin:$PATH
         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-        export KBUILD_BUILD_HOST="project"
+        export KBUILD_BUILD_HOST="GitHub-Actions"
         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
 
-        # --- Version handling ---
+        # --- SCM Version Handling ---
         if [ "${{ inputs.version_hash }}" = "disable" ]; then
           echo "" > .scmversion
           export LOCALVERSION_AUTO=""
@@ -291,22 +290,20 @@ jobs:
           rm -f .scmversion
         fi
 
-        # Clean output directory
+        # --- Prepare Output Directory ---
         rm -rf ../out && mkdir -p ../out
 
-        # Generate defconfig
+        # --- Generate Configuration ---
+        echo "🛠️ Generating defconfig: ${{ inputs.kernel-config }}..."
         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
 
-        CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
+        # --- Compiler Flags & Core Management ---
         EXTRA_CFLAGS=""
-
         if [ "${{ inputs.compiler }}" = "debian-clang" ]; then
           EXTRA_CFLAGS="--target=aarch64-linux-gnu"
         fi
 
-        # --- SAFE THREAD MANAGEMENT ---
         CORES=$(nproc --all)
-
         if [ "${{ inputs.lto_mode }}" = "full" ]; then
           MAKE_JOBS=2
         else
@@ -315,11 +312,12 @@ jobs:
           [ "$MAKE_JOBS" -gt 8 ] && MAKE_JOBS=8
         fi
 
-        echo "CORES=$CORES | MAKE_JOBS=$MAKE_JOBS"
-
+        echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
         export LLVM_PARALLEL=1
 
-        echo "Starting kernel build..."
+        # --- Compilation Process ---
+        echo "📦 Starting kernel compilation..."
+        CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
 
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
           CC=clang \
@@ -334,38 +332,57 @@ jobs:
           CLANG_TRIPLE=aarch64-linux-gnu- \
           LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
           KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
-          KGZIP="gzip -8" \
           Image.gz Image.gz-dtb dtbs \
           2> >(grep --line-buffered -vE "clang: warning:|ld.lld: warning:|Broken pipe" >&2)
-
-        # --- RESULT CHECK ---
-        if ls ../out/arch/arm64/boot/Image* >/dev/null 2>&1; then
-          echo "SUCCESS: Kernel build completed"
+          
+        # --- Build Verification ---
+        KERNEL_DIR="../out/arch/arm64/boot"
+        if [ -s "$KERNEL_DIR/Image.gz-dtb" ] || [ -s "$KERNEL_DIR/Image.gz" ]; then
+          echo "✅ SUCCESS: Kernel compilation completed successfully!"
         else
-          echo "FAILED: Kernel build error"
+          echo "❌ ERROR: Kernel image compilation failed or file is empty."
+          ls -lh "$KERNEL_DIR" 2>/dev/null || true
           exit 1
         fi
 
     - name: Collect Output Binaries
       run: |
-        mkdir -p $GITHUB_WORKSPACE/kernel_binaries
-        cd out/arch/arm64/boot
-        if [ -f "Image.gz-dtb" ]; then
-          cp Image.gz-dtb $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
-        elif [ -f "Image.gz" ]; then
-          if [ -f "dts/qcom/sdm845-beryllium.dtb" ]; then
-            cat Image.gz dts/qcom/sdm845-beryllium.dtb > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
-          else
-            cp Image.gz $GITHUB_WORKSPACE/kernel_binaries/Image.gz
-          fi
+        set -euo pipefail
+        
+        KERNEL_DIR="out/arch/arm64/boot"
+        OUT_DIR="$GITHUB_WORKSPACE/kernel_binaries"
+        mkdir -p "$OUT_DIR"
+
+        echo "📦 Collecting output binaries..."
+
+        # Main Kernel Target
+        if [ -f "$KERNEL_DIR/Image.gz-dtb" ]; then
+          cp "$KERNEL_DIR/Image.gz-dtb" "$OUT_DIR/"
+          echo "  -> Image.gz-dtb [Copied]"
+        elif [ -f "$KERNEL_DIR/Image.gz" ]; then
+          cp "$KERNEL_DIR/Image.gz" "$OUT_DIR/"
+          echo "  -> Image.gz [Copied]"
+        else
+          echo "❌ ERROR: Critical kernel image missing!"
+          exit 1
         fi
-        [ -f "dtbo.img" ] && cp dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img || true
+
+        # Optional Targets
+        [ -f "$KERNEL_DIR/dtbo.img" ] && cp "$KERNEL_DIR/dtbo.img" "$OUT_DIR/" && echo "  -> dtbo.img [Copied]" || true
+        [ -f "$KERNEL_DIR/dtb.img" ] && cp "$KERNEL_DIR/dtb.img" "$OUT_DIR/" && echo "  -> dtb.img [Copied]" || true
+
+        if [ -d "$KERNEL_DIR/dtb" ]; then
+          mkdir -p "$OUT_DIR/dtb"
+          cp -a "$KERNEL_DIR/dtb/." "$OUT_DIR/dtb/" 2>/dev/null || true
+          echo "  -> dtb folder [Copied]"
+        fi
+
+        echo "📊 Total Artifact Size: $(du -sh "$OUT_DIR" | cut -f1)"
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.kernel_name }}-${{ inputs.rom_type }}-${{ inputs.compiler }}-LTO_${{ inputs.lto_mode }}-Opt_${{ inputs.rom_optimization }}-Apatch_${{ inputs.apatch_mode }}-Hash_${{ inputs.version_hash }}"
-        path: kernel_binaries/**
-        compression-level: 8
-        
+        name: "${{ inputs.kernel_name }}-${{ inputs.rom_type }}-${{ inputs.compiler }}-LTO_${{ inputs.lto_mode }}-Root_${{ inputs.apatch_mode }}"
+        path: kernel_binaries/*
+        if-no-files-found: error
         
