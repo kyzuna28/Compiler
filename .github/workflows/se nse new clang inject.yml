@@ -367,22 +367,53 @@ jobs:
 
     - name: Collect Output Binaries
       run: |
-        mkdir -p $GITHUB_WORKSPACE/kernel_binaries
-        cd out/arch/arm64/boot
-        if [ -f "Image.gz-dtb" ]; then
-          cp Image.gz-dtb $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
-        elif [ -f "Image.gz" ]; then
-          if [ -f "dts/qcom/sdm845-beryllium.dtb" ]; then
-            cat Image.gz dts/qcom/sdm845-beryllium.dtb > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
-          else
-            cp Image.gz $GITHUB_WORKSPACE/kernel_binaries/Image.gz
-          fi
+        set -euo pipefail
+
+        echo "========================================"
+        echo "📦 Mengumpulkan file hasil build..."
+        echo "========================================"
+
+        KERNEL_DIR="out/arch/arm64/boot"
+        OUT_DIR="$GITHUB_WORKSPACE/kernel_binaries"
+        mkdir -p "$OUT_DIR"
+
+        # Kernel Utama (Wajib)
+        if [ -f "$KERNEL_DIR/Image.gz-dtb" ]; then
+          cp "$KERNEL_DIR/Image.gz-dtb" "$OUT_DIR/"
+          echo "✅ Image.gz-dtb disalin"
+        elif [ -f "$KERNEL_DIR/Image.gz" ]; then
+          cp "$KERNEL_DIR/Image.gz" "$OUT_DIR/"
+          echo "✅ Image.gz disalin"
+        else
+          echo "❌ ERROR: Kernel image tidak ditemukan!"
+          ls -la "$KERNEL_DIR" || true
+          exit 1
         fi
-        [ -f "dtbo.img" ] && cp dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img || true
+
+        # File Tambahan (Opsional)
+        echo "🔍 Memeriksa file tambahan..."
+        [ -f "$KERNEL_DIR/dtbo.img" ] && cp "$KERNEL_DIR/dtbo.img" "$OUT_DIR/" && echo "✅ dtbo.img disalin" || true
+        [ -f "$KERNEL_DIR/dtb.img" ] && cp "$KERNEL_DIR/dtb.img" "$OUT_DIR/" && echo "✅ dtb.img disalin" || true
+
+        if [ -d "$KERNEL_DIR/dtb" ]; then
+          mkdir -p "$OUT_DIR/dtb"
+          cp -a "$KERNEL_DIR/dtb/." "$OUT_DIR/dtb/" 2>/dev/null || true
+          echo "✅ Folder dtb disalin"
+        fi
+
+        # Ringkasan Akhir
+        echo "========================================"
+        echo "✅ Collect selesai"
+        echo "📊 Total Size: $(du -sh "$OUT_DIR" | cut -f1)"
+        echo "========================================"
+
+        echo "📂 Daftar File Akhir:"
+        ls -lhR "$OUT_DIR"
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: "${{ inputs.kernel_name }}-${{ inputs.rom_type }}-${{ inputs.compiler }}-LTO_${{ inputs.lto_mode }}-Opt_${{ inputs.rom_optimization }}-Root_${{ inputs.kernelsu }}-Hash_${{ inputs.version_hash }}"
-        path: kernel_binaries/**
+        path: kernel_binaries/*
+        if-no-files-found: error
         
