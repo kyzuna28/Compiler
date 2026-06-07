@@ -358,9 +358,10 @@ jobs:
           CLANG_TRIPLE=aarch64-linux-gnu- \
           LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
           KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
+          GZIP=-8 \
           Image.gz Image.gz-dtb dtbs \
           2> >(grep -v "clang: warning:" | grep -v "Broken pipe" >&2)
-
+          
         # --- RESULT CHECK ---
         if ls ../out/arch/arm64/boot/Image* >/dev/null 2>&1; then
           echo "SUCCESS: Kernel build completed"
@@ -387,6 +388,7 @@ jobs:
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
+        name: "${{ inputs.kernel_name }}-${{ inputs.rom_type }}-${{ inputs.compiler }}-LTO_${{ inputs.lto_mode }}-Opt_${{ inputs.rom_optimization }}-Root_${{ inputs.kernelsu }}-Hash_${{ inputs.version_hash }}"
         path: kernel_binaries/**
+        compression-level: 8
         
