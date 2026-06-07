@@ -382,7 +382,7 @@ jobs:
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.kernel_name }}-${{ inputs.rom_type }}-${{ inputs.compiler }}-LTO_${{ inputs.lto_mode }}-Root_${{ inputs.kernelsu }}"
+        name: "${{ inputs.kernel_name }}-${{ inputs.rom_type }}-${{ inputs.compiler }}-LTO_${{ inputs.lto_mode }}-Root_${{ inputs.apatch_mode }}"
         path: kernel_binaries/*
         if-no-files-found: error
         
