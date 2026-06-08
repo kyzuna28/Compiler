@@ -261,7 +261,8 @@ jobs:
 
     - name: Package with AnyKernel3
       run: |
-        # Setup AnyKernel3 workspace
+        # Setup AnyKernel3 workspace bersih
+        rm -rf AnyKernel3
         git clone --depth=1 ${{ inputs.anykernel-url }} AnyKernel3
         rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk}
 
@@ -281,30 +282,20 @@ jobs:
 
         [[ -f "$KERNEL_DIR/dtbo.img" ]] && cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
 
-        # Sanitize variables for Zip naming
+        # Sanitize variables for naming
         CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
-        CLEAN_KERNEL_NAME=$(echo "${{ inputs.kernel_name }}" | tr ' ' '_')
-        CLEAN_ROM_TYPE=$(echo "${{ inputs.rom_type }}" | tr ' ' '_')
-        CLEAN_COMPILER=$(echo "${{ inputs.compiler }}" | tr ' ' '_')
-        CLEAN_LTO_MODE=$(echo "${{ inputs.lto_mode }}" | tr ' ' '_')
-        CLEAN_ROM_OPT=$(echo "${{ inputs.rom_optimization }}" | tr ' ' '_')
-        CLEAN_ROOT=$(echo "${{ inputs.kernelsu }}" | tr ' ' '_')
-        CLEAN_HASH=$(echo "${{ inputs.version_hash }}" | tr ' ' '_')
-        CLEAN_BRANCH=$(echo "${{ inputs.kernel-branch }}" | tr ' ' '_')
         
-        ZIP_NAME="${CLEAN_ZIP_NAME}-${CLEAN_KERNEL_NAME}-${CLEAN_ROM_TYPE}-${CLEAN_COMPILER}-${CLEAN_LTO_MODE}-${CLEAN_ROM_OPT}-${CLEAN_ROOT}-${CLEAN_HASH}-${CLEAN_BRANCH}.zip"
+        # ⚠️ BIKIN NAMA ARTIFACT TANPA .zip (Nanti GitHub yang otomatis nambahin .zip-nya)
+        ARTIFACT_NAME="${CLEAN_ZIP_NAME}"
+        echo "FINAL_ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
         
-        # Compress exactly within AnyKernel3 directory
-        cd AnyKernel3
-        zip -r9 "../$ZIP_NAME" . -x "*.git*" "*placeholder"
-        cd ..
-        
-        echo "FINAL_ZIP_OUTPUT=$ZIP_NAME" >> $GITHUB_ENV
+        # Hapus placeholder agar tidak ikut masuk ke dalam zip
+        rm -f AnyKernel3/*placeholder
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: "KERNEL_BUILD_RESULT"
-        path: "${{ env.FINAL_ZIP_OUTPUT }}"
+        name: "${{ env.FINAL_ARTIFACT_NAME }}"
+        path: AnyKernel3/
         if-no-files-found: error
-        
+         
