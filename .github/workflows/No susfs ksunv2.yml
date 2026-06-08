@@ -213,7 +213,7 @@ jobs:
         BASE_CONFIG="arch/arm64/configs/vendor/xiaomi/${{ inputs.kernel-config }}"
         TARGET_DEVICE_CONFIG="arch/arm64/configs/vendor/xiaomi/${{ inputs.device-config }}"
         
-        # [PERBAIKAN] Menggunakan "cat" untuk passive merge tanpa memicu build system.
+        # Menggunakan "cat" untuk passive merge tanpa memicu build system.
         if [ -f "$BASE_CONFIG" ]; then
           if [ -f "$TARGET_DEVICE_CONFIG" ]; then
             echo "⚙️ Menggabungkan config secara pasif..."
@@ -252,10 +252,12 @@ jobs:
           COMPILER_NAME="Debian Clang"
         fi
 
-        CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
+        # Menyederhanakan string untuk menghindari karakter aneh
+        CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} (LLD ${RAW_LLD_VER})"
         echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
 
-        sed -i 's|.*LINUX_COMPILER.*|echo \#define LINUX_COMPILER \"'"$CUSTOM_COMPILER_STRING"'\"|g' scripts/mkcompile_h || true
+        # PENULISAN SED YANG BENAR: memastikan string terbungkus tanda kutip (") dalam compile.h
+        sed -i "s|.*LINUX_COMPILER.*|echo '#define LINUX_COMPILER \"$CUSTOM_COMPILER_STRING\"'|g" scripts/mkcompile_h || true
 
         TARGET_CONFIG="$BASE_CONFIG"
 
@@ -332,12 +334,11 @@ jobs:
         cd kernel-dir
         set -euo pipefail
         
-        # --- THE ULTIMATE CLEANUP ---
         # Bersihkan paksa segala sisa skrip KernelSU atau proses sebelumnya
         make mrproper
         rm -f .config include/config/auto.conf
         
-        # Buat folder output
+        # Buat folder output bersih
         rm -rf ../out && mkdir -p ../out
         
         # --- Environment Setup ---
