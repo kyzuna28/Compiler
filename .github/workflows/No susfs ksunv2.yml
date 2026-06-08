@@ -5,6 +5,10 @@ run-name: 🚀 ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inp
 on:
   workflow_dispatch:
     inputs:
+      zip_name:
+        description: 'Zip Output Name'
+        required: true
+        type: string
       ubuntu:
         description: 'Ubuntu Version'
         default: 'ubuntu-24.04'
@@ -37,22 +41,22 @@ on:
         - debian-clang
       lto_mode:
         description: 'LTO Optimization'
-        default: 'disable'
+        default: 'no lto'
         required: true
         type: choice
         options:
-        - disable
+        - no lto
         - full
         - thin
       rom_optimization:
         description: 'ROM Specific Tweaks'
-        default: 'disable'
+        default: 'no tweak'
         required: true
         type: choice
         options:
         - AOSP
         - MIUI
-        - disable
+        - no tweak
       kernelsu:
         description: 'Mode Root'
         default: 'apatch'
@@ -90,6 +94,11 @@ on:
       device-config:
         description: 'Device Config (contoh: beryllium.config)'
         default: 'beryllium.config'
+        required: true
+        type: string
+      anykernel-url:
+        description: 'AnyKernel3 Repository URL'
+        default: 'https://github.com/kyzuna28/AnyKernel3.git'
         required: true
         type: string
 
@@ -362,6 +371,7 @@ jobs:
         # --- Compilation Process ---
         echo "📦 Starting kernel compilation..."
         CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
+        CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
 
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
           CC=clang \
@@ -374,7 +384,7 @@ jobs:
           CROSS_COMPILE=aarch64-linux-gnu- \
           CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
           CLANG_TRIPLE=aarch64-linux-gnu- \
-          LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM}" \
+          LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
           KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
           Image.gz Image.gz-dtb dtbs \
           2> >(grep --line-buffered -vE "clang: warning:|ld.lld: warning:|Broken pipe" >&2)
@@ -389,44 +399,52 @@ jobs:
           exit 1
         fi
 
-    - name: Collect Output Binaries
+    - name: Package with AnyKernel3
       run: |
-        set -euo pipefail
+        # 1. Setup AnyKernel3 workspace bersih
+        rm -rf AnyKernel3
+        git clone --depth=1 ${{ inputs.anykernel-url }} AnyKernel3
         
+        # Bersihkan total file sampah, dokumentasi, dan arsitektur lain agar zip ringan
+        rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk,*.txt,*.md}
+
         KERNEL_DIR="out/arch/arm64/boot"
-        OUT_DIR="$GITHUB_WORKSPACE/kernel_binaries"
-        mkdir -p "$OUT_DIR"
-
-        echo "📦 Collecting output binaries..."
-
-        # Main Kernel Target
-        if [ -f "$KERNEL_DIR/Image.gz-dtb" ]; then
-          cp "$KERNEL_DIR/Image.gz-dtb" "$OUT_DIR/"
-          echo "  -> Image.gz-dtb [Copied]"
-        elif [ -f "$KERNEL_DIR/Image.gz" ]; then
-          cp "$KERNEL_DIR/Image.gz" "$OUT_DIR/"
-          echo "  -> Image.gz [Copied]"
+        
+        # 2. Utamakan Image terkompresi (GZ) untuk Beryllium agar ukuran kecil!
+        if [[ -f "$KERNEL_DIR/Image.gz" && -f "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" ]]; then
+          echo "📦 Menggabungkan Image.gz dengan DTB..."
+          cat "$KERNEL_DIR/Image.gz" "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" > AnyKernel3/Image.gz-dtb
         else
-          echo "❌ ERROR: Critical kernel image missing!"
-          exit 1
+          # Cari format terkompresi GZ bawaan source jika ada
+          for img in Image.gz-dtb Image-dtb Image.gz; do
+            if [[ -f "$KERNEL_DIR/$img" ]]; then 
+              cp "$KERNEL_DIR/$img" AnyKernel3/
+              COMPRESSED_FOUND=true
+              break
+            fi
+          done
+          
+          # Jika terpaksa hanya ada Image mentah, kompres manual dengan level -9
+          if [ "${COMPRESSED_FOUND}" != "true" ] && [[ -f "$KERNEL_DIR/Image" ]]; then
+            echo "⚠️ Image.gz tidak ditemukan, mengompres Image mentah ke Gzip..."
+            gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz
+          fi
         fi
 
-        # Optional Targets
-        [ -f "$KERNEL_DIR/dtbo.img" ] && cp "$KERNEL_DIR/dtbo.img" "$OUT_DIR/" && echo "  -> dtbo.img [Copied]" || true
-        [ -f "$KERNEL_DIR/dtb.img" ] && cp "$KERNEL_DIR/dtb.img" "$OUT_DIR/" && echo "  -> dtb.img [Copied]" || true
+        # Ambil dtbo jika ada
+        [[ -f "$KERNEL_DIR/dtbo.img" ]] && cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
 
-        if [ -d "$KERNEL_DIR/dtb" ]; then
-          mkdir -p "$OUT_DIR/dtb"
-          cp -a "$KERNEL_DIR/dtb/." "$OUT_DIR/dtb/" 2>/dev/null || true
-          echo "  -> dtb folder [Copied]"
-        fi
-
-        echo "📊 Total Artifact Size: $(du -sh "$OUT_DIR" | cut -f1)"
+        # 3. Penamaan artifact murni dari zip_name tanpa spasi
+        CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
+        echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
+        
+        # Hapus placeholder bawaan repo agar tidak terbawa masuk zip
+        rm -f AnyKernel3/*placeholder
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.kernel_name }}-${{ inputs.rom_type }}-${{ inputs.compiler }}-LTO_${{ inputs.lto_mode }}-Root_${{ inputs.kernelsu }}"
-        path: kernel_binaries/*
+        name: "${{ env.FINAL_ARTIFACT_NAME }}"
+        path: AnyKernel3/
         if-no-files-found: error
         
