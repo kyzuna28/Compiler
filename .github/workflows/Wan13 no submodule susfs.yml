@@ -255,34 +255,44 @@ jobs:
 
     - name: Package with AnyKernel3
       run: |
-        # Setup AnyKernel3 workspace bersih
+        # 1. Setup AnyKernel3 workspace bersih
         rm -rf AnyKernel3
         git clone --depth=1 ${{ inputs.anykernel-url }} AnyKernel3
-        rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk}
+        
+        # Bersihkan total file sampah, dokumentasi, dan arsitektur lain agar zip ringan
+        rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk,*.txt,*.md}
 
         KERNEL_DIR="out/arch/arm64/boot"
         
-        # Merge dtb and Image for Beryllium
+        # 2. Utamakan Image terkompresi (GZ) untuk Beryllium agar ukuran kecil!
         if [[ -f "$KERNEL_DIR/Image.gz" && -f "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" ]]; then
+          echo "📦 Menggabungkan Image.gz dengan DTB..."
           cat "$KERNEL_DIR/Image.gz" "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" > AnyKernel3/Image.gz-dtb
         else
-          for img in Image.gz-dtb Image-dtb Image.gz Image; do
+          # Cari format terkompresi GZ bawaan source jika ada
+          for img in Image.gz-dtb Image-dtb Image.gz; do
             if [[ -f "$KERNEL_DIR/$img" ]]; then 
               cp "$KERNEL_DIR/$img" AnyKernel3/
+              COMPRESSED_FOUND=true
               break
             fi
           done
+          
+          # Jika terpaksa hanya ada Image mentah, kompres manual dengan level -9
+          if [ "${COMPRESSED_FOUND}" != "true" ] && [[ -f "$KERNEL_DIR/Image" ]]; then
+            echo "⚠️ Image.gz tidak ditemukan, mengompres Image mentah ke Gzip..."
+            gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz
+          fi
         fi
 
+        # Ambil dtbo jika ada
         [[ -f "$KERNEL_DIR/dtbo.img" ]] && cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
 
-        # Sanitize zip name untuk menghilangkan spasi
+        # 3. Penamaan artifact murni dari zip_name tanpa spasi
         CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
-        
-        # Set nama artifact murni hanya dari zip_name
         echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
         
-        # Hapus placeholder agar tidak terbawa
+        # Hapus placeholder bawaan repo agar tidak terbawa masuk zip
         rm -f AnyKernel3/*placeholder
 
     - name: Upload Artifacts
