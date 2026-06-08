@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
 name: Universal Config
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }} | ${{ inputs.kernel-config }} | ${{ inputs.device-config }}
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }} | ${{ inputs.kernel-config }}
 
 on:
   workflow_dispatch:
@@ -67,15 +67,15 @@ on:
         - all-3.1
         - next-3.2
         - apatch
-        - "resu"
+        - resu
       version_hash:
         description: 'Include Version Hash'
         default: 'no hash'
         required: true
         type: choice
         options:
-        - "no hash"
-        - "hash"
+        - no hash
+        - hash
       kernel-url:
         description: 'Kernel Source URL'
         default: 'https://github.com/kyzuna28/wan13.git'
@@ -109,38 +109,23 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-    - name: Clean Environment
+    - name: Clean Environment & Install Dependencies
       run: |
         sudo timedatectl set-timezone Asia/Jakarta
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-        sudo docker image prune --all --force
-
-    - name: Checkout Repository
-      uses: actions/checkout@v4
-
-    - name: Install Dependencies
-      run: |
+        sudo docker image prune -af
         sudo apt-get update
         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch lsb-release software-properties-common gnupg
+        
+        [[ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]] && sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || sudo apt-get install --no-install-recommends -y libtinfo5
 
-        if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
-          sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || true
-          sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.6.0 || true
-        else
-          sudo apt-get install --no-install-recommends -y libtinfo5 || true
-        fi
-
-    - name: Setup Dynamic Swap Space (Up to 16GB)
+    - name: Setup Dynamic Swap Space
       run: |
         sudo swapoff -a || true
         sudo rm -f /mnt/swapfile || true
-        if [ "${{ inputs.lto_mode }}" = "full" ]; then
-          echo "Full LTO: Allocating 16GB Swap..."
-          sudo fallocate -l 16G /mnt/swapfile
-        else
-          echo "Normal: Allocating 8GB Swap..."
-          sudo fallocate -l 8G /mnt/swapfile
-        fi
+        SWAP_SIZE=$([[ "${{ inputs.lto_mode }}" == "full" ]] && echo "16G" || echo "8G")
+        echo "Allocating $SWAP_SIZE Swap..."
+        sudo fallocate -l $SWAP_SIZE /mnt/swapfile
         sudo chmod 600 /mnt/swapfile
         sudo mkswap /mnt/swapfile
         sudo swapon /mnt/swapfile
@@ -148,281 +133,158 @@ jobs:
     - name: Download Toolchain
       run: |
         rm -rf $HOME/tc $HOME/tmp-tc && mkdir -p $HOME/tc
+        cd $HOME
         echo "Downloading Clang (${{ inputs.compiler }})..."
-
-        if [ "${{ inputs.compiler }}" = "zyc-clang" ]; then
-          git clone --depth=1 https://gitlab.com/clangsantoni/zyc_clang.git -b 21 $HOME/tc
-        elif [ "${{ inputs.compiler }}" = "yuki-clang" ]; then
-          git clone --depth=1 https://gitlab.com/TheXPerienceProject/yuki_clang.git -b 18.0.0 $HOME/tc
-        elif [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
-          wget -q https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz -O weebx-clang.tar.gz
-          tar -xf weebx-clang.tar.gz -C $HOME/tc
-          rm -f weebx-clang.tar.gz
-        elif [ "${{ inputs.compiler }}" = "neutron-clang" ]; then
-          cd $HOME/tc
-          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
-          chmod +x antman
-          ./antman -S
-        elif [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
-          git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 $HOME/tc
-        elif [ "${{ inputs.compiler }}" = "debian-clang" ]; then
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 21
-          sudo apt-get install --no-install-recommends -y clang-21 lld-21 llvm-21
-
-          mkdir -p $HOME/tc/bin
-
-          echo '#!/bin/bash' > $HOME/tc/bin/clang
-          echo 'if [[ "$1" == "--version" || "$1" == "-v" ]]; then' >> $HOME/tc/bin/clang
-          echo '    echo "Debian clang version 21.1.8 (3+b1)"' >> $HOME/tc/bin/clang
-          echo '    echo "Target: aarch64-unknown-linux-gnu"' >> $HOME/tc/bin/clang
-          echo '    echo "Thread model: posix"' >> $HOME/tc/bin/clang
-          echo '    echo "InstalledDir: /usr/lib/llvm-21/bin"' >> $HOME/tc/bin/clang
-          echo '    exit 0' >> $HOME/tc/bin/clang
-          echo 'fi' >> $HOME/tc/bin/clang
-          echo 'exec /usr/bin/clang-21 "$@"' >> $HOME/tc/bin/clang
-
-          echo '#!/bin/bash' > $HOME/tc/bin/ld.lld
-          echo 'if [[ "$1" == "--version" || "$1" == "-v" ]]; then' >> $HOME/tc/bin/ld.lld
-          echo '    echo "Debian LLD 21.1.8"' >> $HOME/tc/bin/ld.lld
-          echo '    exit 0' >> $HOME/tc/bin/ld.lld
-          echo 'fi' >> $HOME/tc/bin/ld.lld
-          echo 'exec /usr/bin/ld.lld-21 "$@"' >> $HOME/tc/bin/ld.lld
-
-          chmod +x $HOME/tc/bin/clang
-          chmod +x $HOME/tc/bin/ld.lld
-
-          ln -sf /usr/bin/llvm-ar-21 $HOME/tc/bin/llvm-ar
-          ln -sf /usr/bin/llvm-nm-21 $HOME/tc/bin/llvm-nm
-          ln -sf /usr/bin/llvm-objcopy-21 $HOME/tc/bin/llvm-objcopy
-          ln -sf /usr/bin/llvm-objdump-21 $HOME/tc/bin/llvm-objdump
-        fi
+        case "${{ inputs.compiler }}" in
+          zyc-clang) git clone --depth=1 https://gitlab.com/clangsantoni/zyc_clang.git -b 21 tc ;;
+          yuki-clang) git clone --depth=1 https://gitlab.com/TheXPerienceProject/yuki_clang.git -b 18.0.0 tc ;;
+          weebx-clang) curl -sL https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz | tar -xz -C tc ;;
+          neutron-clang) cd tc && curl -sLO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" && chmod +x antman && ./antman -S ;;
+          aosp-clang) git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 tc ;;
+          debian-clang)
+            wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 21
+            sudo apt-get install --no-install-recommends -y clang-21 lld-21 llvm-21
+            mkdir -p tc/bin
+            echo -e '#!/bin/bash\nif [[ "$1" == "--version" || "$1" == "-v" ]]; then echo -e "Debian clang version 21.1.8\nTarget: aarch64-unknown-linux-gnu"; exit 0; fi\nexec /usr/bin/clang-21 "$@"' > tc/bin/clang
+            echo -e '#!/bin/bash\nif [[ "$1" == "--version" || "$1" == "-v" ]]; then echo "Debian LLD 21.1.8"; exit 0; fi\nexec /usr/bin/ld.lld-21 "$@"' > tc/bin/ld.lld
+            chmod +x tc/bin/*
+            for tool in ar nm objcopy objdump; do ln -sf /usr/bin/llvm-$tool-21 tc/bin/llvm-$tool; done
+            ;;
+        esac
 
     - name: Clone Kernel Source & Init Submodules
       run: |
         git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
-        cd kernel-dir
-        git submodule update --init --recursive
-        make mrproper
+        cd kernel-dir && git submodule update --init --recursive
 
-    - name: Apply Kernel Config (Passive Merge)
+    - name: Apply Kernel Config & Tweaks
       run: |
         cd kernel-dir
-
-        BASE_CONFIG="arch/arm64/configs/vendor/xiaomi/${{ inputs.kernel-config }}"
-        TARGET_DEVICE_CONFIG="arch/arm64/configs/vendor/xiaomi/${{ inputs.device-config }}"
-        
-        # Menggunakan "cat" untuk passive merge tanpa memicu build system.
-        if [ -f "$BASE_CONFIG" ]; then
-          if [ -f "$TARGET_DEVICE_CONFIG" ]; then
-            echo "⚙️ Menggabungkan config secara pasif..."
-            echo "" >> $BASE_CONFIG
-            cat $TARGET_DEVICE_CONFIG >> $BASE_CONFIG
-            echo "✅ Penggabungan teks selesai!"
-          else
-            echo "⚠️ File ${{ inputs.device-config }} tidak ditemukan, lanjut base config saja."
-          fi
-        else
-          echo "❌ ERROR: Base config tidak ditemukan di $BASE_CONFIG!"
-          exit 1
-        fi
-
-        sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
-        sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' $BASE_CONFIG || true
-
         export PATH=$HOME/tc/bin:$PATH
 
-        RAW_CLANG_VER=$(clang --version | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
-        RAW_LLD_VER=$(ld.lld --version | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
-
-        if [ -z "$RAW_LLD_VER" ]; then RAW_LLD_VER="$RAW_CLANG_VER"; fi
-
-        if [ "${{ inputs.compiler }}" = "zyc-clang" ]; then
-          COMPILER_NAME="ZyC Clang"
-        elif [ "${{ inputs.compiler }}" = "yuki-clang" ]; then
-          COMPILER_NAME="Yuki Clang"
-        elif [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
-          COMPILER_NAME="WeebX Clang"
-        elif [ "${{ inputs.compiler }}" = "neutron-clang" ]; then
-          COMPILER_NAME="Neutron Clang"
-        elif [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
-          COMPILER_NAME="AOSP Clang"
+        TARGET_CONFIG="arch/arm64/configs/vendor/xiaomi/${{ inputs.kernel-config }}"
+        TARGET_DEVICE_CONFIG="arch/arm64/configs/vendor/xiaomi/${{ inputs.device-config }}"
+        
+        # --- Passive Merge Config ---
+        if [ -f "$TARGET_CONFIG" ]; then
+          [[ -f "$TARGET_DEVICE_CONFIG" ]] && echo -e "\n$(cat $TARGET_DEVICE_CONFIG)" >> "$TARGET_CONFIG" || echo "⚠️ Device config tidak ditemukan, lanjut base config."
         else
-          COMPILER_NAME="Debian Clang"
+          echo "❌ ERROR: Base config tidak ditemukan!" && exit 1
         fi
 
-        # Menyederhanakan string untuk menghindari karakter aneh
-        CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} (LLD ${RAW_LLD_VER})"
-        echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
+        # Clean extraversion
+        sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
+        sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' "$TARGET_CONFIG" || true
 
-        # PENULISAN SED YANG BENAR: memastikan string terbungkus tanda kutip (") dalam compile.h
+        # --- Clean & Optimized Custom Compiler String ---
+        COMP_PREFIX="${{ inputs.compiler }}"
+        COMP_PREFIX="${COMP_PREFIX%%-*}"
+        COMPILER_NAME="${COMP_PREFIX^} Clang"
+
+        RAW_CLANG_VER=$(clang --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+        RAW_LLD_VER=$(ld.lld --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || echo "$RAW_CLANG_VER")
+        
+        CUSTOM_COMPILER_STRING="${COMPILER_NAME:-Debian Clang} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
+        echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
+        
         sed -i "s|.*LINUX_COMPILER.*|echo '#define LINUX_COMPILER \"$CUSTOM_COMPILER_STRING\"'|g" scripts/mkcompile_h || true
 
-        TARGET_CONFIG="$BASE_CONFIG"
+        # --- Config Helpers ---
+        enable_cfg() { for cfg in "$@"; do echo "CONFIG_$cfg=y" >> "$TARGET_CONFIG"; done; }
+        disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
 
-        for cfg in SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP; do
-          echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
-        done
+        # --- Base Configs ---
+        enable_cfg SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP
 
-        # --- KSU & APatch Configurations ---
-        if [ "${{ inputs.kernelsu }}" = "apatch" ]; then
-          echo "CONFIG_KALLSYMS=y" >> $TARGET_CONFIG
-          echo "CONFIG_KALLSYMS_ALL=y" >> $TARGET_CONFIG
-          echo "CONFIG_KALLSYMS_BASE_RELATIVE=y" >> $TARGET_CONFIG
-          echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
-          echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
-          echo "CONFIG_OVERLAY_FS=y" >> $TARGET_CONFIG
-        elif [ "${{ inputs.kernelsu }}" = "resu" ]; then
-          echo "⚠️ Pilihan 'resu' terdeteksi. Melewati konfigurasi KernelSU..."
+        # --- KSU / APatch Configurations ---
+        if [ "${{ inputs.kernelsu }}" == "apatch" ]; then
+          enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES OVERLAY_FS
+        elif [ "${{ inputs.kernelsu }}" == "resu" ]; then
+          echo "⚠️ Pilihan 'resu' terdeteksi. Melewati injeksi KernelSU/APatch."
         else
-          wget https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
-          patch -p1 < kernel-4.4_4.9.patch || echo "Patch manual hook skipped"
-
-          if [ "${{ inputs.kernelsu }}" = "manager-3.0" ]; then
-            curl https://raw.githubusercontent.com/ThRE-Team/Next-v3/refs/heads/main/setup.sh | bash
-          elif [ "${{ inputs.kernelsu }}" = "all-3.1" ]; then
-            curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main
-          elif [ "${{ inputs.kernelsu }}" = "next-3.2" ]; then
-            curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s v3.2.0
-          fi
-
-          echo "CONFIG_KSU=y" >> $TARGET_CONFIG
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> $TARGET_CONFIG
-          echo "CONFIG_OVERLAY_FS=y" >> $TARGET_CONFIG
-
-          sed -i 's/CONFIG_KPROBES=y/# CONFIG_KPROBES is not set/g' $TARGET_CONFIG || true
-          sed -i 's/CONFIG_HAVE_KPROBES=y/# CONFIG_HAVE_KPROBES is not set/g' $TARGET_CONFIG || true
-          echo "# CONFIG_KPROBES is not set" >> $TARGET_CONFIG
+          wget -q https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
+          patch -p1 < kernel-4.4_4.9.patch || true
+          case "${{ inputs.kernelsu }}" in
+            manager-3.0) curl -s https://raw.githubusercontent.com/ThRE-Team/Next-v3/refs/heads/main/setup.sh | bash ;;
+            all-3.1) curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main ;;
+            next-3.2) curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s v3.2.0 ;;
+          esac
+          enable_cfg KSU KSU_MANUAL_HOOK OVERLAY_FS
+          disable_cfg KPROBES HAVE_KPROBES
         fi
 
-        # --- ROM Optimization ---
-        if [ "${{ inputs.rom_optimization }}" = "MIUI" ]; then
-          for cfg in KCAL_EQ SOUND_CONTROL USB_FASTCHARGE DEVFREQ_GOV_MSM_ADRENO_TZ ZRAM ZCOMP CRYPTO_ZSTD ZRAM_DEF_COMP_ZSTD SIMPLE_LMK IOSCHED_MAPLE DEFAULT_MAPLE F2FS_FS EXFAT_FS BOEFFLA_WL_BLOCKER STATE_NOTIFIER POWER_SUSPEND POWER_SUSPEND_STATE NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL; do
-            echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
-          done
-        elif [ "${{ inputs.rom_optimization }}" = "AOSP" ]; then
-          for cfg in KCAL_EQ SOUND_CONTROL USB_FASTCHARGE INPUT_TOUCHSCREEN DEVFREQ_GOV_MSM_ADRENO_TZ IOSCHED_ZEN DEFAULT_ZEN F2FS_FS EXFAT_FS SIMPLE_LMK TCP_CONG_BBR DEFAULT_BBR NET_SCH_FQ NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL; do
-            echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
-          done
-          echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> $TARGET_CONFIG
+        # --- ROM Optimization Tweaks ---
+        if [ "${{ inputs.rom_optimization }}" == "MIUI" ]; then
+          enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE DEVFREQ_GOV_MSM_ADRENO_TZ ZRAM ZCOMP CRYPTO_ZSTD ZRAM_DEF_COMP_ZSTD SIMPLE_LMK IOSCHED_MAPLE DEFAULT_MAPLE F2FS_FS EXFAT_FS BOEFFLA_WL_BLOCKER STATE_NOTIFIER POWER_SUSPEND POWER_SUSPEND_STATE NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
+        elif [ "${{ inputs.rom_optimization }}" == "AOSP" ]; then
+          enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE INPUT_TOUCHSCREEN DEVFREQ_GOV_MSM_ADRENO_TZ IOSCHED_ZEN DEFAULT_ZEN F2FS_FS EXFAT_FS SIMPLE_LMK TCP_CONG_BBR DEFAULT_BBR NET_SCH_FQ NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
+          echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> "$TARGET_CONFIG"
         fi
 
         # --- Debug Disabling ---
-        for cfg in DEBUG_INFO DEBUG_KERNEL PROVE_LOCKING BUG COREDUMP ELF_CORE SLUB_DEBUG MSM_KGSL_BATT_STATS MI_LOG_PRINT MSM_SMD_DEBUG; do
-          sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" $TARGET_CONFIG || true
-          echo "# CONFIG_$cfg is not set" >> $TARGET_CONFIG
-        done
-        echo "CONFIG_DEBUG_INFO_NONE=y" >> $TARGET_CONFIG
-        echo "CONFIG_BUILD_ARM64_DT_BINARIES=y" >> $TARGET_CONFIG
-        echo "CONFIG_DTB_COMPRESSION=y" >> $TARGET_CONFIG
+        disable_cfg DEBUG_INFO DEBUG_KERNEL PROVE_LOCKING BUG COREDUMP ELF_CORE SLUB_DEBUG MSM_KGSL_BATT_STATS MI_LOG_PRINT MSM_SMD_DEBUG
+        enable_cfg DEBUG_INFO_NONE BUILD_ARM64_DT_BINARIES DTB_COMPRESSION
 
         # --- LTO Configuration ---
-        for lto in LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE; do
-          sed -i "s/CONFIG_$lto=.*/# CONFIG_$lto is not set/g" $TARGET_CONFIG || true
-        done
-        if [ "${{ inputs.lto_mode }}" = "full" ]; then
-          echo -e "CONFIG_LTO=y\nCONFIG_LTO_CLANG=y\nCONFIG_LTO_CLANG_FULL=y" >> $TARGET_CONFIG
-        elif [ "${{ inputs.lto_mode }}" = "thin" ]; then
-          echo -e "CONFIG_LTO=y\nCONFIG_LTO_CLANG=y\nCONFIG_THINLTO=y\nCONFIG_LTO_CLANG_THIN=y" >> $TARGET_CONFIG
-        else
-          echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
-        fi
+        disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
+        case "${{ inputs.lto_mode }}" in
+          full) enable_cfg LTO LTO_CLANG LTO_CLANG_FULL ;;
+          thin) enable_cfg LTO LTO_CLANG THINLTO LTO_CLANG_THIN ;;
+          *) enable_cfg LTO_NONE ;;
+        esac
 
     - name: Compile Kernel
       run: |
         cd kernel-dir
-        set -euo pipefail
-        
-        # Bersihkan paksa segala sisa skrip KernelSU atau proses sebelumnya
-        make mrproper
-        rm -f .config include/config/auto.conf
-        
-        # Buat folder output bersih
-        rm -rf ../out && mkdir -p ../out
-        
-        # --- Environment Setup ---
         export PATH=$HOME/tc/bin:$PATH
         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
         export KBUILD_BUILD_HOST="GitHub-Actions"
         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
-
-        # --- SCM Version Handling ---
-        if [ "${{ inputs.version_hash }}" = "no hash" ]; then
-          echo "" > .scmversion
-          export LOCALVERSION_AUTO=""
-        else
-          rm -f .scmversion
-        fi
-
-        # Generate config murni ke ../out (Kbuild baru nyala di sini)
-        echo "🛠️ Generating defconfig: vendor/xiaomi/${{ inputs.kernel-config }}..."
-        make ARCH=arm64 O=../out vendor/xiaomi/${{ inputs.kernel-config }}
-
-        # --- Compiler Flags & Core Management ---
-        EXTRA_CFLAGS=""
-        if [ "${{ inputs.compiler }}" = "debian-clang" ]; then
-          EXTRA_CFLAGS="--target=aarch64-linux-gnu"
-        fi
-
-        CORES=$(nproc --all)
-        if [ "${{ inputs.lto_mode }}" = "full" ]; then
-          MAKE_JOBS=2
-        else
-          MAKE_JOBS=$(( (CORES + 1) / 2 ))
-          [ "$MAKE_JOBS" -lt 2 ] && MAKE_JOBS=2
-          [ "$MAKE_JOBS" -gt 8 ] && MAKE_JOBS=8
-        fi
-
-        echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
         export LLVM_PARALLEL=1
 
-        # --- Compilation Process ---
-        echo "📦 Starting kernel compilation..."
+        [[ "${{ inputs.version_hash }}" == "no hash" ]] && echo "" > .scmversion && export LOCALVERSION_AUTO="" || rm -f .scmversion
+
+        make mrproper
+        rm -rf ../out && mkdir -p ../out
+        
+        echo "🛠 *Generating defconfig: vendor/xiaomi/${{ inputs.kernel-config }}..."
+        make ARCH=arm64 O=../out vendor/xiaomi/${{ inputs.kernel-config }}
+
+        EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
+        
+        CORES=$(nproc --all)
+        MAKE_JOBS=$(( (CORES + 1) / 2 ))
+        [[ "${{ inputs.lto_mode }}" == "full" ]] && MAKE_JOBS=2
+        [[ "$MAKE_JOBS" -lt 2 ]] && MAKE_JOBS=2
+        [[ "$MAKE_JOBS" -gt 8 ]] && MAKE_JOBS=8
+
         CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
         CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
 
+        echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
-          CC=clang \
-          LD=ld.lld \
-          AR=llvm-ar \
-          NM=llvm-nm \
-          OBJCOPY=llvm-objcopy \
-          OBJDUMP=llvm-objdump \
-          LLVM_IAS=1 \
-          CROSS_COMPILE=aarch64-linux-gnu- \
-          CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-          CLANG_TRIPLE=aarch64-linux-gnu- \
+          CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
+          LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
           LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
           KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
-          Image.gz Image.gz-dtb dtbs \
-          2> >(grep --line-buffered -vE "clang: warning:|ld.lld: warning:|Broken pipe" >&2)
-          
-        # --- Build Verification ---
-        KERNEL_DIR="../out/arch/arm64/boot"
-        if [ -s "$KERNEL_DIR/Image.gz-dtb" ] || [ -s "$KERNEL_DIR/Image.gz" ]; then
-          echo "✅ SUCCESS: Kernel compilation completed successfully!"
-        else
-          echo "❌ ERROR: Kernel image compilation failed or file is empty."
-          ls -lh "$KERNEL_DIR" 2>/dev/null || true
-          exit 1
+          Image.gz Image.gz-dtb dtbs 2> >(grep -vE "clang: warning:|ld.lld: warning:|Broken pipe" >&2)
+
+        if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
+          echo "❌ ERROR: Kernel compilation failed." && exit 1
         fi
 
     - name: Package with AnyKernel3
       run: |
-        rm -rf AnyKernel3
         git clone --depth=1 ${{ inputs.anykernel-url }} AnyKernel3
-        
         rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk,*.txt,*.md}
 
         KERNEL_DIR="out/arch/arm64/boot"
-        COMPRESSED_FOUND="false"
         
         if [[ -f "$KERNEL_DIR/Image.gz" && -f "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" ]]; then
-          echo "📦 Menggabungkan Image.gz dengan DTB..."
+          echo "📦 Menggabungkan Image.gz dengan Beryllium DTB..."
           cat "$KERNEL_DIR/Image.gz" "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" > AnyKernel3/Image.gz-dtb
-          COMPRESSED_FOUND="true"
         else
+          COMPRESSED_FOUND="false"
           for img in Image.gz-dtb Image-dtb Image.gz; do
             if [[ -f "$KERNEL_DIR/$img" ]]; then 
               cp "$KERNEL_DIR/$img" AnyKernel3/
@@ -431,18 +293,17 @@ jobs:
             fi
           done
           
-          if [ "${COMPRESSED_FOUND}" != "true" ] && [[ -f "$KERNEL_DIR/Image" ]]; then
-            echo "⚠️ Image.gz tidak ditemukan, mengompres Image mentah ke Gzip..."
+          if [[ "$COMPRESSED_FOUND" != "true" && -f "$KERNEL_DIR/Image" ]]; then
+            echo "⚠️ Mengompres Image mentah ke Gzip secara manual..."
             gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz
           fi
         fi
 
         [[ -f "$KERNEL_DIR/dtbo.img" ]] && cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
+        rm -f AnyKernel3/*placeholder
 
         CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
         echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
-        
-        rm -f AnyKernel3/*placeholder
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
