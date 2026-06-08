@@ -167,34 +167,29 @@ jobs:
         
         # --- Passive Merge Config ---
         if [ -f "$TARGET_CONFIG" ]; then
-          [[ -f "$TARGET_DEVICE_CONFIG" ]] && echo -e "\n$(cat $TARGET_DEVICE_CONFIG)" >> "$TARGET_CONFIG" || echo "⚠️ Device config tidak ditemukan, lanjut base config."
+          [[ -f "$TARGET_DEVICE_CONFIG" ]] && echo -e "\n$(cat $TARGET_DEVICE_CONFIG)" >> "$TARGET_CONFIG"  && echo "✅ Defconfig berhasil digabung" || echo "⚠️ Device config tidak ditemukan, lanjut base config."
         else
           echo "❌ ERROR: Base config tidak ditemukan!" && exit 1
-        fi
+        fi 
 
         # Clean extraversion
         sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' "$TARGET_CONFIG" || true
-
-        # --- Clean & Optimized Custom Compiler String ---
-        COMP_PREFIX="${{ inputs.compiler }}"
-        COMP_PREFIX="${COMP_PREFIX%%-*}"
-        COMPILER_NAME="${COMP_PREFIX^} Clang"
-
+        
+        # Custom Compiler String setup
+        COMPILER_NAME=$(echo "${{ inputs.compiler }}" | awk -F'-' '{print toupper(substr($1,1,1)) substr($1,2) " Clang"}')
         RAW_CLANG_VER=$(clang --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
         RAW_LLD_VER=$(ld.lld --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || echo "$RAW_CLANG_VER")
-        
         CUSTOM_COMPILER_STRING="${COMPILER_NAME:-Debian Clang} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
         echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
-        
-        sed -i "s|.*LINUX_COMPILER.*|echo '#define LINUX_COMPILER \"$CUSTOM_COMPILER_STRING\"'|g" scripts/mkcompile_h || true
+        sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
 
-        # --- Config Helpers ---
+        # Config Helpers
         enable_cfg() { for cfg in "$@"; do echo "CONFIG_$cfg=y" >> "$TARGET_CONFIG"; done; }
         disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
 
-        # --- Base Configs ---
-        enable_cfg SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP
+        # Base Configs
+        enable_cfg SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP OVERLAY_FS        
 
         # --- KSU / APatch Configurations ---
         if [ "${{ inputs.kernelsu }}" == "apatch" ]; then
@@ -238,7 +233,7 @@ jobs:
         cd kernel-dir
         export PATH=$HOME/tc/bin:$PATH
         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-        export KBUILD_BUILD_HOST="project"
+        export KBUILD_BUILD_HOST="GitHub-Actions"
         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
         export LLVM_PARALLEL=1
 
