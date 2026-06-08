@@ -253,7 +253,7 @@ jobs:
           echo "ERROR: Kernel compilation failed." && exit 1
         fi
 
-        - name: Package with AnyKernel3
+    - name: Package with AnyKernel3
       run: |
         # Setup AnyKernel3 workspace bersih
         rm -rf AnyKernel3
