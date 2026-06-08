@@ -183,7 +183,7 @@ jobs:
         # Base Configs
         enable_cfg SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP OVERLAY_FS
 
-        # --- KSU / APatch Configurations ---
+        # KSU / APatch Configurations
         if [ "${{ inputs.kernelsu }}" != "apatch" ]; then
           echo "🚀 [KSU] Memulai injeksi KernelSU..."
           echo "📥 [KSU] Mengunduh & menerapkan patch manual hook..."
@@ -204,7 +204,7 @@ jobs:
           echo "✅ [APATCH] Selesai menerapkan config!"
         fi
 
-        # --- ROM Optimization Tweaks ---
+        # ROM Optimization Tweaks
         if [ "${{ inputs.rom_optimization }}" == "MIUI" ]; then
           enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE DEVFREQ_GOV_MSM_ADRENO_TZ ZRAM ZCOMP CRYPTO_ZSTD ZRAM_DEF_COMP_ZSTD SIMPLE_LMK IOSCHED_MAPLE DEFAULT_MAPLE F2FS_FS EXFAT_FS BOEFFLA_WL_BLOCKER STATE_NOTIFIER POWER_SUSPEND POWER_SUSPEND_STATE NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
         elif [ "${{ inputs.rom_optimization }}" == "AOSP" ]; then
@@ -212,11 +212,11 @@ jobs:
           echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> "$TARGET_CONFIG"
         fi
 
-        # --- Debug Disabling ---
+        # Debug Disabling
         disable_cfg DEBUG_INFO DEBUG_KERNEL PROVE_LOCKING BUG COREDUMP ELF_CORE SLUB_DEBUG MSM_KGSL_BATT_STATS MI_LOG_PRINT MSM_SMD_DEBUG
         enable_cfg DEBUG_INFO_NONE BUILD_ARM64_DT_BINARIES DTB_COMPRESSION
 
-        # --- LTO Configuration ---
+        # LTO Configuration
         disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
         case "${{ inputs.lto_mode }}" in
           full) enable_cfg LTO LTO_CLANG LTO_CLANG_FULL ;;
