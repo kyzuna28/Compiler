@@ -167,7 +167,7 @@ jobs:
         # Clean extraversion
         sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' "$TARGET_CONFIG" || true
-
+        
         # Custom Compiler String setup
         COMPILER_NAME=$(echo "${{ inputs.compiler }}" | awk -F'-' '{print toupper(substr($1,1,1)) substr($1,2) " Clang"}')
         RAW_CLANG_VER=$(clang --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
@@ -183,34 +183,40 @@ jobs:
         # Base Configs
         enable_cfg SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP OVERLAY_FS
 
-        # Root Implementation (KSU / APatch)
+        # --- KSU / APatch Configurations ---
         if [ "${{ inputs.kernelsu }}" != "apatch" ]; then
+          echo "🚀 [KSU] Memulai injeksi KernelSU..."
+          echo "📥 [KSU] Mengunduh & menerapkan patch manual hook..."
           wget -q https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
           patch -p1 < kernel-4.4_4.9.patch || true
           case "${{ inputs.kernelsu }}" in
-            manager-3.0) curl -s https://raw.githubusercontent.com/ThRE-Team/Next-v3/refs/heads/main/setup.sh | bash ;;
-            all-3.1) curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main ;;
-            next-3.2) curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s v3.2.0 ;;
+            manager-3.0) echo "📥 [KSU] Memasang Manager 3.0..."; curl -s https://raw.githubusercontent.com/ThRE-Team/Next-v3/refs/heads/main/setup.sh | bash ;;
+            all-3.1) echo "📥 [KSU] Memasang Next (Main)..."; curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main ;;
+            next-3.2) echo "📥 [KSU] Memasang Next v3.2.0..."; curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s v3.2.0 ;;
           esac
+          echo "⚙️ [KSU] Menyesuaikan defconfig kernel..."
           enable_cfg KSU KSU_MANUAL_HOOK
           disable_cfg KPROBES HAVE_KPROBES
+          echo "✨ [KSU] Sukses menerapkan KernelSU!"
         else
+          echo "🧬 [APATCH] Mengonfigurasi APatch..."
           enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
+          echo "✅ [APATCH] Selesai menerapkan config!"
         fi
 
-        # ROM Optimization Tweaks
-        if [ "${{ inputs.rom_optimization }}" = "MIUI" ]; then
+        # --- ROM Optimization Tweaks ---
+        if [ "${{ inputs.rom_optimization }}" == "MIUI" ]; then
           enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE DEVFREQ_GOV_MSM_ADRENO_TZ ZRAM ZCOMP CRYPTO_ZSTD ZRAM_DEF_COMP_ZSTD SIMPLE_LMK IOSCHED_MAPLE DEFAULT_MAPLE F2FS_FS EXFAT_FS BOEFFLA_WL_BLOCKER STATE_NOTIFIER POWER_SUSPEND POWER_SUSPEND_STATE NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
-        elif [ "${{ inputs.rom_optimization }}" = "AOSP" ]; then
+        elif [ "${{ inputs.rom_optimization }}" == "AOSP" ]; then
           enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE INPUT_TOUCHSCREEN DEVFREQ_GOV_MSM_ADRENO_TZ IOSCHED_ZEN DEFAULT_ZEN F2FS_FS EXFAT_FS SIMPLE_LMK TCP_CONG_BBR DEFAULT_BBR NET_SCH_FQ NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
           echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> "$TARGET_CONFIG"
         fi
 
-        # Disable Debugging
+        # --- Debug Disabling ---
         disable_cfg DEBUG_INFO DEBUG_KERNEL PROVE_LOCKING BUG COREDUMP ELF_CORE SLUB_DEBUG MSM_KGSL_BATT_STATS MI_LOG_PRINT MSM_SMD_DEBUG
         enable_cfg DEBUG_INFO_NONE BUILD_ARM64_DT_BINARIES DTB_COMPRESSION
 
-        # LTO Configuration
+        # --- LTO Configuration ---
         disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
         case "${{ inputs.lto_mode }}" in
           full) enable_cfg LTO LTO_CLANG LTO_CLANG_FULL ;;
@@ -227,79 +233,67 @@ jobs:
         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
         export LLVM_PARALLEL=1
 
-        # Check version hash input
         [[ "${{ inputs.version_hash }}" == "no hash" ]] && echo "" > .scmversion && export LOCALVERSION_AUTO="" || rm -f .scmversion
 
         rm -rf ../out && mkdir -p ../out
         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
 
         EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
-        
-        # Dynamic CPU Jobs calculation
+
         CORES=$(nproc --all)
         MAKE_JOBS=$(( (CORES + 1) / 2 ))
         [[ "${{ inputs.lto_mode }}" == "full" ]] && MAKE_JOBS=2
         [[ "$MAKE_JOBS" -lt 2 ]] && MAKE_JOBS=2
         [[ "$MAKE_JOBS" -gt 8 ]] && MAKE_JOBS=8
 
-        # Clean spaces for localversion
         CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
         CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
-        
-        # Build execution
+
+        echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
           CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
           LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
           LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
           KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
           Image.gz Image.gz-dtb dtbs 2> >(grep -vE "clang: warning:|ld.lld: warning:|Broken pipe" >&2)
-
-        # Check build success
-        if [ ! -s "../out/arch/arm64/boot/Image.gz" ]; then
-          echo "ERROR: Kernel compilation failed." && exit 1
+        
+        if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
+          echo "❌ [ERROR] Kernel compilation failed." && exit 1
+        else
+          echo "✅ [SUCCESS] Kernel compilation successful."
         fi
-
+        
     - name: Package with AnyKernel3
       run: |
-        # 1. Setup AnyKernel3 workspace bersih
-        rm -rf AnyKernel3
         git clone --depth=1 ${{ inputs.anykernel-url }} AnyKernel3
-        
-        # Bersihkan total file sampah, dokumentasi, dan arsitektur lain agar zip ringan
         rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk,*.txt,*.md}
 
         KERNEL_DIR="out/arch/arm64/boot"
         
-        # 2. Utamakan Image terkompresi (GZ) untuk Beryllium agar ukuran kecil!
         if [[ -f "$KERNEL_DIR/Image.gz" && -f "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" ]]; then
-          echo "📦 Menggabungkan Image.gz dengan DTB..."
+          echo "📦 Menggabungkan Image.gz dengan Beryllium DTB..."
           cat "$KERNEL_DIR/Image.gz" "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" > AnyKernel3/Image.gz-dtb
         else
-          # Cari format terkompresi GZ bawaan source jika ada
+          COMPRESSED_FOUND="false"
           for img in Image.gz-dtb Image-dtb Image.gz; do
             if [[ -f "$KERNEL_DIR/$img" ]]; then 
               cp "$KERNEL_DIR/$img" AnyKernel3/
-              COMPRESSED_FOUND=true
+              COMPRESSED_FOUND="true"
               break
             fi
           done
           
-          # Jika terpaksa hanya ada Image mentah, kompres manual dengan level -9
-          if [ "${COMPRESSED_FOUND}" != "true" ] && [[ -f "$KERNEL_DIR/Image" ]]; then
-            echo "⚠️ Image.gz tidak ditemukan, mengompres Image mentah ke Gzip..."
+          if [[ "$COMPRESSED_FOUND" != "true" && -f "$KERNEL_DIR/Image" ]]; then
+            echo "⚠️ Mengompres Image mentah ke Gzip secara manual..."
             gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz
           fi
         fi
 
-        # Ambil dtbo jika ada
         [[ -f "$KERNEL_DIR/dtbo.img" ]] && cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
+        rm -f AnyKernel3/*placeholder
 
-        # 3. Penamaan artifact murni dari zip_name tanpa spasi
         CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
         echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
-        
-        # Hapus placeholder bawaan repo agar tidak terbawa masuk zip
-        rm -f AnyKernel3/*placeholder
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
