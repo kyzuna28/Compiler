@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
 name: Universal Config
-run-name: 🚀 ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }} | ${{ inputs.kernel-config }}
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }} | ${{ inputs.kernel-config }} | ${{ inputs.device-config }}
 
 on:
   workflow_dispatch:
@@ -92,8 +92,8 @@ on:
         required: true
         type: string
       device-config:
-        description: 'Device Config (contoh: beryllium.config)'
-        default: 'beryllium.config'
+        description: 'Device Config (contoh: noresu.config)'
+        default: 'noresu.config'
         required: true
         type: string
       anykernel-url:
@@ -209,24 +209,29 @@ jobs:
       run: |
         cd kernel-dir
 
-        # --- Automated Split Config Merge ---
-        BASE_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
+        # --- Automated Split Config Merge (Sesuai Lokasi Folder Kamu) ---
+        BASE_CONFIG="arch/arm64/configs/vendor/xiaomi/${{ inputs.kernel-config }}"
         TARGET_DEVICE_CONFIG="arch/arm64/configs/vendor/xiaomi/${{ inputs.device-config }}"
         
-        if [ -f "$TARGET_DEVICE_CONFIG" ]; then
-          echo "⚙️ Menggabungkan ${{ inputs.kernel-config }} dengan ${{ inputs.device-config }}..."
-          export ARCH=arm64
-          ./scripts/kconfig/merge_config.sh -m $BASE_CONFIG $TARGET_DEVICE_CONFIG
-          make ARCH=arm64 olddefconfig
-          make ARCH=arm64 savedefconfig
-          mv defconfig $BASE_CONFIG
-          echo "✅ Penggabungan selesai!"
+        if [ -f "$BASE_CONFIG" ]; then
+          if [ -f "$TARGET_DEVICE_CONFIG" ]; then
+            echo "⚙️ Menggabungkan ${{ inputs.kernel-config }} dengan ${{ inputs.device-config }}..."
+            export ARCH=arm64
+            ./scripts/kconfig/merge_config.sh -m $BASE_CONFIG $TARGET_DEVICE_CONFIG
+            make ARCH=arm64 olddefconfig
+            make ARCH=arm64 savedefconfig
+            mv defconfig $BASE_CONFIG
+            echo "✅ Penggabungan selesai!"
+          else
+            echo "⚠️ File ${{ inputs.device-config }} tidak ditemukan, melanjutkan dengan base config saja..."
+          fi
         else
-          echo "⚠️ File ${{ inputs.device-config }} tidak ditemukan, melanjutkan dengan base config saja..."
+          echo "❌ ERROR: Base config tidak ditemukan di $BASE_CONFIG!"
+          exit 1
         fi
 
         sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
-        sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' arch/arm64/configs/${{ inputs.kernel-config }} || true
+        sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' $BASE_CONFIG || true
 
         export PATH=$HOME/tc/bin:$PATH
 
@@ -252,9 +257,9 @@ jobs:
         CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
         echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
 
-        sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
+        sed -i 's|.*LINUX_COMPILER.*|echo \#define LINUX_COMPILER \"'"$CUSTOM_COMPILER_STRING"'\"|g' scripts/mkcompile_h || true
 
-        TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
+        TARGET_CONFIG="$BASE_CONFIG"
 
         for cfg in SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP; do
           echo "CONFIG_$cfg=y" >> $TARGET_CONFIG
@@ -347,8 +352,8 @@ jobs:
         rm -rf ../out && mkdir -p ../out
 
         # --- Generate Configuration ---
-        echo "🛠️ Generating defconfig: ${{ inputs.kernel-config }}..."
-        make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
+        echo "🛠️ Generating defconfig: vendor/xiaomi/${{ inputs.kernel-config }}..."
+        make ARCH=arm64 O=../out vendor/xiaomi/${{ inputs.kernel-config }}
 
         # --- Compiler Flags & Core Management ---
         EXTRA_CFLAGS=""
