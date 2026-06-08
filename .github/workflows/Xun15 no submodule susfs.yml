@@ -278,17 +278,9 @@ jobs:
 
         # Sanitize variables for naming
         CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
-        CLEAN_KERNEL_NAME=$(echo "${{ inputs.kernel_name }}" | tr ' ' '_')
-        CLEAN_ROM_TYPE=$(echo "${{ inputs.rom_type }}" | tr ' ' '_')
-        CLEAN_COMPILER=$(echo "${{ inputs.compiler }}" | tr ' ' '_')
-        CLEAN_LTO=$(echo "${{ inputs.lto_mode }}" | tr ' ' '_')
-        CLEAN_ROM_OPT=$(echo "${{ inputs.rom_optimization }}" | tr ' ' '_')
-        CLEAN_APATCH=$(echo "${{ inputs.apatch_mode }}" | tr ' ' '_')
-        CLEAN_HASH=$(echo "${{ inputs.version_hash }}" | tr ' ' '_')
-        CLEAN_BRANCH=$(echo "${{ inputs.kernel-branch }}" | tr ' ' '_')
         
         # ⚠️ BIKIN NAMA ARTIFACT TANPA .zip (Nanti GitHub yang otomatis nambahin .zip-nya)
-        ARTIFACT_NAME="${CLEAN_ZIP_NAME}-${CLEAN_KERNEL_NAME}-${CLEAN_ROM_TYPE}-${CLEAN_COMPILER}-${CLEAN_LTO}-${CLEAN_ROM_OPT}-${CLEAN_APATCH}-${CLEAN_HASH}-${CLEAN_BRANCH}"
+        ARTIFACT_NAME="${CLEAN_ZIP_NAME}"
         echo "FINAL_ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
         
         # Hapus placeholder agar tidak ikut masuk ke dalam zip
