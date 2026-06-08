@@ -239,7 +239,6 @@ jobs:
 
         [[ "${{ inputs.version_hash }}" == "no hash" ]] && echo "" > .scmversion && export LOCALVERSION_AUTO="" || rm -f .scmversion
 
-        make mrproper
         rm -rf ../out && mkdir -p ../out
         
         echo "🛠 *Generating defconfig: vendor/xiaomi/${{ inputs.kernel-config }}..."
