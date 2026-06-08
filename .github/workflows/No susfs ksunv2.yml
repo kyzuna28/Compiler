@@ -204,26 +204,24 @@ jobs:
         git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
         cd kernel-dir
         git submodule update --init --recursive
+        make mrproper
 
-    - name: Apply Kernel Config
+    - name: Apply Kernel Config (Passive Merge)
       run: |
         cd kernel-dir
 
-        # --- Automated Split Config Merge (Sesuai Lokasi Folder Kamu) ---
         BASE_CONFIG="arch/arm64/configs/vendor/xiaomi/${{ inputs.kernel-config }}"
         TARGET_DEVICE_CONFIG="arch/arm64/configs/vendor/xiaomi/${{ inputs.device-config }}"
         
+        # [PERBAIKAN] Menggunakan "cat" untuk passive merge tanpa memicu build system.
         if [ -f "$BASE_CONFIG" ]; then
           if [ -f "$TARGET_DEVICE_CONFIG" ]; then
-            echo "⚙️ Menggabungkan ${{ inputs.kernel-config }} dengan ${{ inputs.device-config }}..."
-            export ARCH=arm64
-            ./scripts/kconfig/merge_config.sh -m $BASE_CONFIG $TARGET_DEVICE_CONFIG
-            make ARCH=arm64 olddefconfig
-            make ARCH=arm64 savedefconfig
-            mv defconfig $BASE_CONFIG
-            echo "✅ Penggabungan selesai!"
+            echo "⚙️ Menggabungkan config secara pasif..."
+            echo "" >> $BASE_CONFIG
+            cat $TARGET_DEVICE_CONFIG >> $BASE_CONFIG
+            echo "✅ Penggabungan teks selesai!"
           else
-            echo "⚠️ File ${{ inputs.device-config }} tidak ditemukan, melanjutkan dengan base config saja..."
+            echo "⚠️ File ${{ inputs.device-config }} tidak ditemukan, lanjut base config saja."
           fi
         else
           echo "❌ ERROR: Base config tidak ditemukan di $BASE_CONFIG!"
@@ -274,7 +272,7 @@ jobs:
           echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
           echo "CONFIG_OVERLAY_FS=y" >> $TARGET_CONFIG
         elif [ "${{ inputs.kernelsu }}" = "resu" ]; then
-          echo "⚠️ Pilihan 'resu' terdeteksi. Melewati konfigurasi KernelSU dan APatch..."
+          echo "⚠️ Pilihan 'resu' terdeteksi. Melewati konfigurasi KernelSU..."
         else
           wget https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
           patch -p1 < kernel-4.4_4.9.patch || echo "Patch manual hook skipped"
@@ -334,6 +332,14 @@ jobs:
         cd kernel-dir
         set -euo pipefail
         
+        # --- THE ULTIMATE CLEANUP ---
+        # Bersihkan paksa segala sisa skrip KernelSU atau proses sebelumnya
+        make mrproper
+        rm -f .config include/config/auto.conf
+        
+        # Buat folder output
+        rm -rf ../out && mkdir -p ../out
+        
         # --- Environment Setup ---
         export PATH=$HOME/tc/bin:$PATH
         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
@@ -348,10 +354,7 @@ jobs:
           rm -f .scmversion
         fi
 
-        # --- Prepare Output Directory ---
-        rm -rf ../out && mkdir -p ../out
-
-        # --- Generate Configuration ---
+        # Generate config murni ke ../out (Kbuild baru nyala di sini)
         echo "🛠️ Generating defconfig: vendor/xiaomi/${{ inputs.kernel-config }}..."
         make ARCH=arm64 O=../out vendor/xiaomi/${{ inputs.kernel-config }}
 
@@ -406,44 +409,38 @@ jobs:
 
     - name: Package with AnyKernel3
       run: |
-        # 1. Setup AnyKernel3 workspace bersih
         rm -rf AnyKernel3
         git clone --depth=1 ${{ inputs.anykernel-url }} AnyKernel3
         
-        # Bersihkan total file sampah, dokumentasi, dan arsitektur lain agar zip ringan
         rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk,*.txt,*.md}
 
         KERNEL_DIR="out/arch/arm64/boot"
+        COMPRESSED_FOUND="false"
         
-        # 2. Utamakan Image terkompresi (GZ) untuk Beryllium agar ukuran kecil!
         if [[ -f "$KERNEL_DIR/Image.gz" && -f "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" ]]; then
           echo "📦 Menggabungkan Image.gz dengan DTB..."
           cat "$KERNEL_DIR/Image.gz" "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" > AnyKernel3/Image.gz-dtb
+          COMPRESSED_FOUND="true"
         else
-          # Cari format terkompresi GZ bawaan source jika ada
           for img in Image.gz-dtb Image-dtb Image.gz; do
             if [[ -f "$KERNEL_DIR/$img" ]]; then 
               cp "$KERNEL_DIR/$img" AnyKernel3/
-              COMPRESSED_FOUND=true
+              COMPRESSED_FOUND="true"
               break
             fi
           done
           
-          # Jika terpaksa hanya ada Image mentah, kompres manual dengan level -9
           if [ "${COMPRESSED_FOUND}" != "true" ] && [[ -f "$KERNEL_DIR/Image" ]]; then
             echo "⚠️ Image.gz tidak ditemukan, mengompres Image mentah ke Gzip..."
             gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz
           fi
         fi
 
-        # Ambil dtbo jika ada
         [[ -f "$KERNEL_DIR/dtbo.img" ]] && cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
 
-        # 3. Penamaan artifact murni dari zip_name tanpa spasi
         CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
         echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
         
-        # Hapus placeholder bawaan repo agar tidak terbawa masuk zip
         rm -f AnyKernel3/*placeholder
 
     - name: Upload Artifacts
