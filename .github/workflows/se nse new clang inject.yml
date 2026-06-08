@@ -282,14 +282,13 @@ jobs:
 
         [[ -f "$KERNEL_DIR/dtbo.img" ]] && cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
 
-        # Sanitize variables for naming
+        # Sanitize zip name untuk menghilangkan spasi
         CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
         
-        # ⚠️ BIKIN NAMA ARTIFACT TANPA .zip (Nanti GitHub yang otomatis nambahin .zip-nya)
-        ARTIFACT_NAME="${CLEAN_ZIP_NAME}"
-        echo "FINAL_ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
+        # Set nama artifact murni hanya dari zip_name
+        echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
         
-        # Hapus placeholder agar tidak ikut masuk ke dalam zip
+        # Hapus placeholder agar tidak terbawa
         rm -f AnyKernel3/*placeholder
 
     - name: Upload Artifacts
