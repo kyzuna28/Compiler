@@ -193,19 +193,25 @@ jobs:
 
         # --- KSU / APatch Configurations ---
         if [ "${{ inputs.kernelsu }}" == "apatch" ]; then
+          echo "🧬 [APATCH] Mengonfigurasi APatch..."
           enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES OVERLAY_FS
+          echo "✅ [APATCH] Selesai menerapkan config!"
         elif [ "${{ inputs.kernelsu }}" == "resu" ]; then
-          echo "⚠️ Pilihan 'resu' terdeteksi. Melewati injeksi KernelSU/APatch."
+          echo "⚠️ [SKIP] Melewati injeksi KernelSU/APatch/Patch 4.9."
         else
+          echo "🚀 [KSU] Memulai injeksi KernelSU..."
+          echo "📥 [KSU] Mengunduh & menerapkan patch manual hook..."
           wget -q https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
           patch -p1 < kernel-4.4_4.9.patch || true
           case "${{ inputs.kernelsu }}" in
-            manager-3.0) curl -s https://raw.githubusercontent.com/ThRE-Team/Next-v3/refs/heads/main/setup.sh | bash ;;
-            all-3.1) curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main ;;
-            next-3.2) curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s v3.2.0 ;;
+            manager-3.0) echo "📥 [KSU] Memasang Manager 3.0..."; curl -s https://raw.githubusercontent.com/ThRE-Team/Next-v3/refs/heads/main/setup.sh | bash ;;
+            all-3.1) echo "📥 [KSU] Memasang Next (Main)..."; curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main ;;
+            next-3.2) echo "📥 [KSU] Memasang Next v3.2.0..."; curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s v3.2.0 ;;
           esac
+          echo "⚙️ [KSU] Menyesuaikan defconfig kernel..."
           enable_cfg KSU KSU_MANUAL_HOOK OVERLAY_FS
           disable_cfg KPROBES HAVE_KPROBES
+          echo "✨ [KSU] Sukses menerapkan KernelSU!"
         fi
 
         # --- ROM Optimization Tweaks ---
@@ -233,7 +239,7 @@ jobs:
         cd kernel-dir
         export PATH=$HOME/tc/bin:$PATH
         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-        export KBUILD_BUILD_HOST="GitHub-Actions"
+        export KBUILD_BUILD_HOST="project"
         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
         export LLVM_PARALLEL=1
 
@@ -262,9 +268,11 @@ jobs:
           LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
           KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
           Image.gz Image.gz-dtb dtbs 2> >(grep -vE "clang: warning:|ld.lld: warning:|Broken pipe" >&2)
-
+        
         if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
-          echo "❌ ERROR: Kernel compilation failed." && exit 1
+          echo "❌ [ERROR] Kernel compilation failed." && exit 1
+        else
+          echo "✅ [SUCCESS] Kernel compilation successful."
         fi
 
     - name: Package with AnyKernel3
