@@ -212,7 +212,7 @@ jobs:
         cd kernel-dir
         export PATH=$HOME/tc/bin:$PATH
         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-        export KBUILD_BUILD_HOST="GitHub-Actions"
+        export KBUILD_BUILD_HOST="project"
         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
         export LLVM_PARALLEL=1
 
