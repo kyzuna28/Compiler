@@ -172,7 +172,7 @@ jobs:
         COMPILER_NAME=$(echo "${{ inputs.compiler }}" | awk -F'-' '{print toupper(substr($1,1,1)) substr($1,2) " Clang"}')
         RAW_CLANG_VER=$(clang --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
         RAW_LLD_VER=$(ld.lld --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || echo "$RAW_CLANG_VER")
-        CUSTOM_COMPILER_STRING="${COMPILER_NAME:-Debian Clang} ${RAW_CLANG_VER} + PGO + AutoFDO + BOLT + Propeller + ThinLTO + MLGO + Polly + O3, LLD ${RAW_LLD_VER}"
+        CUSTOM_COMPILER_STRING="${COMPILER_NAME:-Debian Clang} ${RAW_CLANG_VER} ✦ Pipeline: PGO • AutoFDO • BOLT • Propeller • ThinLTO • MLGO • Polly • -O3 ✦ LLD ${RAW_LLD_VER}"
         echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
         sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
 
