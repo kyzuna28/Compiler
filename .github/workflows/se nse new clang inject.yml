@@ -255,7 +255,7 @@ jobs:
           LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
           LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
           KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
-          Image.gz Image.gz-dtb dtbs 2> >(grep -vE "clang: warning:|ld.lld: warning:|Broken pipe" >&2)
+          Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
         
         if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
           echo "❌ [ERROR] Kernel compilation failed." && exit 1
