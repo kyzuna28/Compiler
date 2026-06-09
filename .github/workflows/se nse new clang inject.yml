@@ -265,18 +265,21 @@ jobs:
         
     - name: Package with AnyKernel3
       run: |
+        echo "📥 [FETCH] Mengkloning repositori AnyKernel3..."
         git clone --depth=1 ${{ inputs.anykernel-url }} AnyKernel3
         rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk,*.txt,*.md}
 
         KERNEL_DIR="out/arch/arm64/boot"
         
+        echo "⚙️ [PROSES] Menyiapkan file kernel..."
         if [[ -f "$KERNEL_DIR/Image.gz" && -f "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" ]]; then
-          echo "📦 Menggabungkan Image.gz dengan Beryllium DTB..."
+          echo "📦 [BUILD] Menggabungkan Image.gz dengan Beryllium DTB..."
           cat "$KERNEL_DIR/Image.gz" "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" > AnyKernel3/Image.gz-dtb
         else
           COMPRESSED_FOUND="false"
           for img in Image.gz-dtb Image-dtb Image.gz; do
             if [[ -f "$KERNEL_DIR/$img" ]]; then 
+              echo "✅ [INFO] Ditemukan file $img, menyalin ke AnyKernel3..."
               cp "$KERNEL_DIR/$img" AnyKernel3/
               COMPRESSED_FOUND="true"
               break
@@ -284,14 +287,31 @@ jobs:
           done
           
           if [[ "$COMPRESSED_FOUND" != "true" && -f "$KERNEL_DIR/Image" ]]; then
-            echo "⚠️ Mengompres Image mentah ke Gzip secara manual..."
+            echo "⚠️ [WARN] Image terkompresi tidak ditemukan!"
+            echo "🗜️ [COMPRESS] Mengompres Image mentah ke Gzip secara manual (-9)..."
             gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz
           fi
         fi
 
-        [[ -f "$KERNEL_DIR/dtbo.img" ]] && cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
+        if [[ -f "$KERNEL_DIR/dtbo.img" ]]; then
+          echo "💾 [INFO] Ditemukan dtbo.img, menyalin ke AnyKernel3..."
+          cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
+        fi
+        
         rm -f AnyKernel3/*placeholder
 
+        # --- Pengecekan Akhir (Status Berhasil / Gagal) ---
+        echo "🔍 [CEK] Memverifikasi hasil packaging AnyKernel3..."
+        if ls AnyKernel3/Image* 1> /dev/null 2>&1; then
+          echo "✨ [SUKSES] File kernel berhasil dipaketkan ke dalam folder AnyKernel3!"
+          echo "🎉 [SELESAI] Siap untuk proses Upload."
+        else
+          echo "❌ [GAGAL] File Image kernel tidak ditemukan di folder AnyKernel3!"
+          echo "💀 [FATAL] Terjadi kesalahan saat memindahkan kernel build. Membatalkan proses..."
+          exit 1
+        fi
+
+        echo "🏷️ [TAG] Menyiapkan nama output Artifact..."
         CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
         echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
 
@@ -300,5 +320,6 @@ jobs:
       with:
         name: "${{ env.FINAL_ARTIFACT_NAME }}"
         path: AnyKernel3/
+        compression-level: 9
         if-no-files-found: error
         
