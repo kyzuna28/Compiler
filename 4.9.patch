@@ -1,7 +1,7 @@
-From 557d09ea94b778648b03ca70d83df6c1492289da Mon Sep 17 00:00:00 2001
+From 06ed3717efb1769882a83c65058f11eebd85ed68 Mon Sep 17 00:00:00 2001
 From: kyzuna28 <122950944+kyzuna28@users.noreply.github.com>
-Date: Sat, 6 Jun 2026 19:10:25 +0000
-Subject: [PATCH] kernel: Apply patch 4.9
+Date: Wed, 10 Jun 2026 03:39:47 +0000
+Subject: [PATCH] Config Tweak
 
 ---
  .gitignore                            |   3 +
@@ -15,21 +15,21 @@ Subject: [PATCH] kernel: Apply patch 4.9
  8 files changed, 164 insertions(+)
 
 diff --git a/.gitignore b/.gitignore
-index 08381b628..d9a64e2c1 100644
+index 667f54445b4f..5e6e2bc9600f 100644
 --- a/.gitignore
 +++ b/.gitignore
-@@ -124,6 +124,9 @@ kernel/configs/android-*.cfg
- #
- Android.bp
+@@ -119,6 +119,9 @@ all.config
+ # fetched Android config fragments
+ kernel/configs/android-*.cfg
  
 +# Ignoring out folder
 +out/
 +
  #
- # JSON compilation database for LSP
+ #Ignoring Android.bp link file
  #
 diff --git a/arch/arm64/boot/dts/qcom/smb1355.dtsi b/arch/arm64/boot/dts/qcom/smb1355.dtsi
-index 5939440cf..dae1cc6d9 100644
+index 5939440cfa47..dae1cc6d90dc 100644
 --- a/arch/arm64/boot/dts/qcom/smb1355.dtsi
 +++ b/arch/arm64/boot/dts/qcom/smb1355.dtsi
 @@ -38,6 +38,11 @@ smb1355_0: qcom,smb1355@8 {
@@ -57,7 +57,7 @@ index 5939440cf..dae1cc6d9 100644
  			      <&pmi8998_rradc 12>;
  		io-channel-names = "charger_temp",
 diff --git a/drivers/power/supply/qcom/qpnp-smb2.c b/drivers/power/supply/qcom/qpnp-smb2.c
-index 73c3bb799..061497509 100644
+index 3aa626517087..6553bdba8c2f 100644
 --- a/drivers/power/supply/qcom/qpnp-smb2.c
 +++ b/drivers/power/supply/qcom/qpnp-smb2.c
 @@ -2043,6 +2043,10 @@ static int smb2_init_hw(struct smb2 *chip)
@@ -72,7 +72,7 @@ index 73c3bb799..061497509 100644
  		DEFAULT_VOTER, chip->dt.no_battery, 0);
  	vote(chg->fcc_votable,
 diff --git a/drivers/power/supply/qcom/smb5-lib.c b/drivers/power/supply/qcom/smb5-lib.c
-index 262c5eedf..6936b3b4c 100644
+index 262c5eedfc5d..6936b3b4c9fc 100644
 --- a/drivers/power/supply/qcom/smb5-lib.c
 +++ b/drivers/power/supply/qcom/smb5-lib.c
 @@ -29,6 +29,11 @@
@@ -88,7 +88,7 @@ index 262c5eedf..6936b3b4c 100644
  	pr_err("%s: %s: " fmt, chg->name,	\
  		__func__, ##__VA_ARGS__)	\
 diff --git a/fs/proc/version.c b/fs/proc/version.c
-index d2154eb6d..abe628ec1 100644
+index d2154eb6d78f..abe628ec14d1 100644
 --- a/fs/proc/version.c
 +++ b/fs/proc/version.c
 @@ -5,12 +5,29 @@
@@ -122,7 +122,7 @@ index d2154eb6d..abe628ec1 100644
  }
  
 diff --git a/fs/sdcardfs/sdcardfs.h b/fs/sdcardfs/sdcardfs.h
-index b991219cb..03856b77c 100644
+index b991219cbb33..03856b77c8ec 100644
 --- a/fs/sdcardfs/sdcardfs.h
 +++ b/fs/sdcardfs/sdcardfs.h
 @@ -73,6 +73,9 @@
@@ -136,10 +136,10 @@ index b991219cb..03856b77c 100644
  /*
   * Permissions are handled by our permission function.
 diff --git a/init/Kconfig b/init/Kconfig
-index 371648f17..ba6d80ea9 100644
+index 323bf53b4c8e..85a3d9e15712 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -2371,4 +2371,11 @@ config ASN1
+@@ -2368,4 +2368,11 @@ config ASN1
  	  inform it as to what tags are to be expected in a stream and what
  	  functions to call on what tags.
  
@@ -152,7 +152,7 @@ index 371648f17..ba6d80ea9 100644
 +
  source "kernel/Kconfig.locks"
 diff --git a/init/version.c b/init/version.c
-index 5606341e9..b41ba48f4 100644
+index 5606341e9efd..b41ba48f4196 100644
 --- a/init/version.c
 +++ b/init/version.c
 @@ -45,7 +45,122 @@ const char linux_banner[] =
