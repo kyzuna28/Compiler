@@ -1,280 +1,339 @@
-From 06ed3717efb1769882a83c65058f11eebd85ed68 Mon Sep 17 00:00:00 2001
+From 146562d4a16cd269b2a4b077c139613d22be0339 Mon Sep 17 00:00:00 2001
 From: kyzuna28 <122950944+kyzuna28@users.noreply.github.com>
-Date: Wed, 10 Jun 2026 03:39:47 +0000
-Subject: [PATCH] Config Tweak
+Date: Sat, 6 Jun 2026 20:57:37 +0000
+Subject: [PATCH] Resukisu
 
 ---
- .gitignore                            |   3 +
- arch/arm64/boot/dts/qcom/smb1355.dtsi |  10 +++
- drivers/power/supply/qcom/qpnp-smb2.c |   4 +
- drivers/power/supply/qcom/smb5-lib.c  |   5 ++
- fs/proc/version.c                     |  17 ++++
- fs/sdcardfs/sdcardfs.h                |   3 +
- init/Kconfig                          |   7 ++
- init/version.c                        | 115 ++++++++++++++++++++++++++
- 8 files changed, 164 insertions(+)
+ .gitmodules           |  3 +++
+ KernelSU              |  1 +
+ drivers/Kconfig       |  1 +
+ drivers/Makefile      |  1 +
+ drivers/input/input.c | 15 +++++++++++++--
+ drivers/kernelsu      |  1 +
+ fs/devpts/inode.c     |  8 +++++++-
+ fs/exec.c             | 10 ++++++++++
+ fs/open.c             |  7 +++++++
+ fs/read_write.c       | 15 +++++++++++++++
+ fs/stat.c             | 40 +++++++++++++++++++++++++++++++++++-----
+ kernel/reboot.c       | 15 +++++++++++++++
+ 12 files changed, 109 insertions(+), 8 deletions(-)
+ create mode 100644 .gitmodules
+ create mode 160000 KernelSU
+ create mode 120000 drivers/kernelsu
 
-diff --git a/.gitignore b/.gitignore
-index 667f54445b4f..5e6e2bc9600f 100644
---- a/.gitignore
-+++ b/.gitignore
-@@ -119,6 +119,9 @@ all.config
- # fetched Android config fragments
- kernel/configs/android-*.cfg
+diff --git a/.gitmodules b/.gitmodules
+new file mode 100644
+index 000000000..cd9389ae5
+--- /dev/null
++++ b/.gitmodules
+@@ -0,0 +1,3 @@
++[submodule "KernelSU"]
++	path = KernelSU
++	url = https://github.com/ReSukiSU/ReSukiSU
+diff --git a/KernelSU b/KernelSU
+new file mode 160000
+index 000000000..664ace871
+--- /dev/null
++++ b/KernelSU
+@@ -0,0 +1 @@
++Subproject commit 664ace8719b950b2931228ca16e034b651322077
+diff --git a/drivers/Kconfig b/drivers/Kconfig
+index 4ee7416ed..66f8f3722 100644
+--- a/drivers/Kconfig
++++ b/drivers/Kconfig
+@@ -216,4 +216,5 @@ source "drivers/gps/Kconfig"
  
-+# Ignoring out folder
-+out/
-+
- #
- #Ignoring Android.bp link file
- #
-diff --git a/arch/arm64/boot/dts/qcom/smb1355.dtsi b/arch/arm64/boot/dts/qcom/smb1355.dtsi
-index 5939440cfa47..dae1cc6d90dc 100644
---- a/arch/arm64/boot/dts/qcom/smb1355.dtsi
-+++ b/arch/arm64/boot/dts/qcom/smb1355.dtsi
-@@ -38,6 +38,11 @@ smb1355_0: qcom,smb1355@8 {
- 		interrupt-parent = <&smb1355_0>;
- 		status = "disabled";
+ source "drivers/halls/Kconfig"
  
-+#ifdef CONFIG_LIMITLESS
-+		qcom,fastchg-current-ma = <2800>;
-+		qcom,hc-mode-current-max-ma = <2800>;
++source "drivers/kernelsu/Kconfig"
+ endmenu
+diff --git a/drivers/Makefile b/drivers/Makefile
+index 8daadc6db..dba025585 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -183,3 +183,4 @@ obj-$(CONFIG_SENSORS_SSC)		+= sensors/
+ obj-$(CONFIG_TEE)		+= tee/
+ obj-$(CONFIG_BCM_GPS_SPI_DRIVER) += gps/
+ obj-$(CONFIG_HALLS)		+= halls/
++obj-$(CONFIG_KSU) += kernelsu/
+diff --git a/drivers/input/input.c b/drivers/input/input.c
+index 378717d1b..acf6d1933 100644
+--- a/drivers/input/input.c
++++ b/drivers/input/input.c
+@@ -436,10 +436,21 @@ static void input_handle_event(struct input_dev *dev,
+  * to 'seed' initial state of a switch or initial position of absolute
+  * axis, etc.
+  */
++#ifdef CONFIG_KSU_MANUAL_HOOK
++extern bool ksu_input_hook __read_mostly;
++extern __attribute__((cold)) int ksu_handle_input_handle_event(
++unsigned int *type, unsigned int *code, int *value);
 +#endif
 +
- 		io-channels = <&pmi8998_rradc 2>,
- 			      <&pmi8998_rradc 12>;
- 		io-channel-names = "charger_temp",
-@@ -85,6 +90,11 @@ smb1355_1: qcom,smb1355@c {
- 		interrupt-parent = <&smb1355_1>;
- 		status = "disabled";
- 
-+#ifdef CONFIG_LIMITLESS
-+		qcom,fastchg-current-ma = <2800>;
-+		qcom,hc-mode-current-max-ma = <2800>;
-+#endif
-+
- 		io-channels = <&pmi8998_rradc 2>,
- 			      <&pmi8998_rradc 12>;
- 		io-channel-names = "charger_temp",
-diff --git a/drivers/power/supply/qcom/qpnp-smb2.c b/drivers/power/supply/qcom/qpnp-smb2.c
-index 3aa626517087..6553bdba8c2f 100644
---- a/drivers/power/supply/qcom/qpnp-smb2.c
-+++ b/drivers/power/supply/qcom/qpnp-smb2.c
-@@ -2043,6 +2043,10 @@ static int smb2_init_hw(struct smb2 *chip)
- 	/* vote 0mA on usb_icl for non battery platforms */
- 	vote(chg->usb_icl_votable,
- 		DEFAULT_VOTER, chip->dt.no_battery, 0);
-+#ifdef CONFIG_LIMITLESS
-+	vote(chg->usb_icl_votable,
-+		"LIMITLESS_VOTER", true, 2800000);
-+#endif
- 	vote(chg->dc_suspend_votable,
- 		DEFAULT_VOTER, chip->dt.no_battery, 0);
- 	vote(chg->fcc_votable,
-diff --git a/drivers/power/supply/qcom/smb5-lib.c b/drivers/power/supply/qcom/smb5-lib.c
-index 262c5eedfc5d..6936b3b4c9fc 100644
---- a/drivers/power/supply/qcom/smb5-lib.c
-+++ b/drivers/power/supply/qcom/smb5-lib.c
-@@ -29,6 +29,11 @@
- #include "storm-watch.h"
- #include "schgm-flash.h"
- 
-+#ifdef CONFIG_LIMITLESS
-+  #define USBIN_2500MA    2500000
-+  #define USBIN_3000MA    3000000
-+#endif
-+
- #define smblib_err(chg, fmt, ...)		\
- 	pr_err("%s: %s: " fmt, chg->name,	\
- 		__func__, ##__VA_ARGS__)	\
-diff --git a/fs/proc/version.c b/fs/proc/version.c
-index d2154eb6d78f..abe628ec14d1 100644
---- a/fs/proc/version.c
-+++ b/fs/proc/version.c
-@@ -5,12 +5,29 @@
- #include <linux/seq_file.h>
- #include <linux/utsname.h>
- 
-+/* Limitless Identity */
-+#ifdef CONFIG_LIMITLESS
-+extern char thre_user_name[];
-+extern char thre_host_name[];
-+extern char thre_compiler[];
-+#endif
-+
- static int version_proc_show(struct seq_file *m, void *v)
+ void input_event(struct input_dev *dev,
+-		 unsigned int type, unsigned int code, int value)
++ unsigned int type, unsigned int code, int value)
  {
-+#ifdef CONFIG_LIMITLESS
-+	seq_printf(m, linux_proc_banner,
-+		utsname()->sysname,
-+		utsname()->release,
-+		thre_user_name,
-+		thre_host_name,
-+		thre_compiler,
-+		utsname()->version);
-+#else
- 	seq_printf(m, linux_proc_banner,
- 		utsname()->sysname,
- 		utsname()->release,
- 		utsname()->version);
+-	unsigned long flags;
++unsigned long flags;
++
++#ifdef CONFIG_KSU_MANUAL_HOOK
++if (unlikely(ksu_input_hook))
++ksu_handle_input_handle_event(&type, &code, &value);
 +#endif
- 	return 0;
+ 
+ 	if (is_event_supported(type, dev->evbit, EV_MAX)) {
+ 
+diff --git a/drivers/kernelsu b/drivers/kernelsu
+new file mode 120000
+index 000000000..9e51d0d62
+--- /dev/null
++++ b/drivers/kernelsu
+@@ -0,0 +1 @@
++../KernelSU/kernel
+\ No newline at end of file
+diff --git a/fs/devpts/inode.c b/fs/devpts/inode.c
+index 81be3ba17..93edef474 100644
+--- a/fs/devpts/inode.c
++++ b/fs/devpts/inode.c
+@@ -522,6 +522,9 @@ void devpts_kill_index(struct pts_fs_info *fsi, int idx)
+  *
+  * The created inode is returned. Remove it from /dev/pts/ by devpts_pty_kill.
+  */
++#ifdef CONFIG_KSU_SUCOMPAT
++extern int ksu_handle_devpts_pty_new(struct inode *ptmx_inode, struct dentry *dentry, int index);
++#endif
+ struct dentry *devpts_pty_new(struct pts_fs_info *fsi, int index, void *priv)
+ {
+ 	struct dentry *dentry;
+@@ -555,7 +558,10 @@ struct dentry *devpts_pty_new(struct pts_fs_info *fsi, int index, void *priv)
+ 		iput(inode);
+ 		dentry = ERR_PTR(-ENOMEM);
+ 	}
+-
++	
++#ifdef CONFIG_KSU_SUCOMPAT
++ksu_handle_devpts_pty_new(NULL, dentry, index);
++#endif
+ 	return dentry;
  }
  
-diff --git a/fs/sdcardfs/sdcardfs.h b/fs/sdcardfs/sdcardfs.h
-index b991219cbb33..03856b77c8ec 100644
---- a/fs/sdcardfs/sdcardfs.h
-+++ b/fs/sdcardfs/sdcardfs.h
-@@ -73,6 +73,9 @@
+diff --git a/fs/exec.c b/fs/exec.c
+index 5addf3b00..0c5fc5331 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -1837,12 +1837,19 @@ static int do_execveat_common(int fd, struct filename *filename,
+ 	return retval;
+ }
  
- #define AID_PACKAGE_INFO  1027
++#ifdef CONFIG_KSU_MANUAL_HOOK
++__attribute__((hot))
++extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);
++#endif
+ int do_execve(struct filename *filename,
+ 	const char __user *const __user *__argv,
+ 	const char __user *const __user *__envp)
+ {
+ 	struct user_arg_ptr argv = { .ptr.native = __argv };
+ 	struct user_arg_ptr envp = { .ptr.native = __envp };
++#ifdef CONFIG_KSU_MANUAL_HOOK
++ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
++#endif
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
  
-+#ifdef CONFIG_LIMITLESS
-+  #define SDCARDFS_VERSION "Limitless 2.4"
+@@ -1870,6 +1877,9 @@ static int compat_do_execve(struct filename *filename,
+ 		.is_compat = true,
+ 		.ptr.compat = __envp,
+ 	};
++#ifdef CONFIG_KSU_MANUAL_HOOK
++ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
++#endif
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+diff --git a/fs/open.c b/fs/open.c
+index f2b82c462..1cc5a1fcc 100644
+--- a/fs/open.c
++++ b/fs/open.c
+@@ -360,6 +360,10 @@ SYSCALL_DEFINE4(fallocate, int, fd, int, mode, loff_t, offset, loff_t, len)
+  * We do this by temporarily clearing all FS-related capabilities and
+  * switching the fsuid/fsgid around to the real ones.
+  */
++#ifdef CONFIG_KSU_MANUAL_HOOK
++__attribute__((hot))
++extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);
++#endif
+ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+ {
+ 	const struct cred *old_cred;
+@@ -369,6 +373,9 @@ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+ 	struct vfsmount *mnt;
+ 	int res;
+ 	unsigned int lookup_flags = LOOKUP_FOLLOW;
++#ifdef CONFIG_KSU_MANUAL_HOOK
++ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
 +#endif
  
+ 	if (mode & ~S_IRWXO)	/* where's F_OK, X_OK, W_OK, R_OK? */
+ 		return -EINVAL;
+diff --git a/fs/read_write.c b/fs/read_write.c
+index 901231269..6492000d7 100644
+--- a/fs/read_write.c
++++ b/fs/read_write.c
+@@ -456,8 +456,16 @@ ssize_t __vfs_read(struct file *file, char __user *buf, size_t count,
+ }
+ EXPORT_SYMBOL(__vfs_read);
+ 
++#ifdef CONFIG_KSU_SUCOMPAT
++__attribute__((hot))
++extern int ksu_handle_vfs_read(struct file **file_ptr, char __user **buf_ptr, size_t *count_ptr, loff_t **pos_ptr);
++#endif
++
+ ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
+ {
++#ifdef CONFIG_KSU_SUCOMPAT
++	ksu_handle_vfs_read(&file, &buf, &count, &pos);
++#endif
+ 	ssize_t ret;
+ 
+ 	if (!(file->f_mode & FMODE_READ))
+@@ -540,8 +548,15 @@ ssize_t __kernel_write(struct file *file, const char *buf, size_t count, loff_t
+ 
+ EXPORT_SYMBOL(__kernel_write);
+ 
++#ifdef CONFIG_KSU_SUCOMPAT
++__attribute__((hot))
++extern int ksu_handle_vfs_write(struct file **file_ptr, const char __user **buf_ptr, size_t *count_ptr, loff_t **pos_ptr);
++#endif
+ ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_t *pos)
+ {
++#ifdef CONFIG_KSU_SUCOMPAT
++ksu_handle_vfs_write(&file, &buf, &count, &pos);
++#endif
+ 	ssize_t ret;
+ 
+ 	if (!(file->f_mode & FMODE_WRITE))
+diff --git a/fs/stat.c b/fs/stat.c
+index 068fdbcc9..12e54176b 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -1,7 +1,7 @@
  /*
-  * Permissions are handled by our permission function.
-diff --git a/init/Kconfig b/init/Kconfig
-index 323bf53b4c8e..85a3d9e15712 100644
---- a/init/Kconfig
-+++ b/init/Kconfig
-@@ -2368,4 +2368,11 @@ config ASN1
- 	  inform it as to what tags are to be expected in a stream and what
- 	  functions to call on what tags.
+- *  linux/fs/stat.c
++ * linux/fs/stat.c
+  *
+- *  Copyright (C) 1991, 1992  Linus Torvalds
++ * Copyright (C) 1991, 1992  Linus Torvalds
+  */
  
-+config LIMITLESS
-+	bool "Enable Limitless Addon"
-+	default n
-+	help
-+	  This option enables ThRE Team's Limitless Addon
-+	  for dynamic kernel parameters.
-+
- source "kernel/Kconfig.locks"
-diff --git a/init/version.c b/init/version.c
-index 5606341e9efd..b41ba48f4196 100644
---- a/init/version.c
-+++ b/init/version.c
-@@ -45,7 +45,122 @@ const char linux_banner[] =
- 	"Linux version " UTS_RELEASE " (" LINUX_COMPILE_BY "@"
- 	LINUX_COMPILE_HOST ") (" LINUX_COMPILER ") " UTS_VERSION "\n";
+ #include <linux/export.h>
+@@ -200,6 +200,10 @@ SYSCALL_DEFINE2(lstat, const char __user *, filename,
+ 	return cp_old_stat(&stat, statbuf);
+ }
  
-+#ifdef CONFIG_LIMITLESS
-+const char linux_proc_banner[] =
-+	"%s version %s (%s@%s) (%s) %s\n";
-+#else
-+
- const char linux_proc_banner[] =
- 	"%s version %s"
- 	" (" LINUX_COMPILE_BY "@" LINUX_COMPILE_HOST ")"
- 	" (" LINUX_COMPILER ") %s\n";
++#ifdef CONFIG_KSU_MANUAL_HOOK
++extern void ksu_handle_newfstat_ret(unsigned int *fd, struct stat __user **statbuf_ptr);
 +#endif
 +
-+/* Limitless Identity */
-+#ifdef CONFIG_LIMITLESS
-+ char thre_kernel_name[64] = UTS_RELEASE;
-+ char thre_user_name[64]   = LINUX_COMPILE_BY;
-+ char thre_host_name[64]   = LINUX_COMPILE_HOST;
-+ char thre_compiler[128]   = LINUX_COMPILER;
-+ char thre_build_date[128] = UTS_VERSION;
-+
-+static char default_kernel_name[64] = UTS_RELEASE;
-+static char default_user_name[64]   = LINUX_COMPILE_BY;
-+static char default_host_name[64]   = LINUX_COMPILE_HOST;
-+static char default_compiler[128]   = LINUX_COMPILER;
-+static char default_build_date[128] = UTS_VERSION;
-+
-+module_param_string(default_kernel_name, default_kernel_name, sizeof(default_kernel_name), 0444);
-+module_param_string(default_user_name,   default_user_name,   sizeof(default_user_name),   0444);
-+module_param_string(default_host_name,   default_host_name,   sizeof(default_host_name),   0444);
-+module_param_string(default_compiler,    default_compiler,    sizeof(default_compiler),    0444);
-+module_param_string(default_build_date,  default_build_date,  sizeof(default_build_date),  0444);
-+
-+EXPORT_SYMBOL_GPL(thre_kernel_name);
-+EXPORT_SYMBOL_GPL(thre_user_name);
-+EXPORT_SYMBOL_GPL(thre_host_name);
-+EXPORT_SYMBOL_GPL(thre_compiler);
-+EXPORT_SYMBOL_GPL(thre_build_date);
-+
-+static int set_kernel_name(const char *val, const struct kernel_param *kp)
-+{
-+    char tmp[64];
-+    size_t len;
-+    snprintf(tmp, sizeof(tmp), "%s", val);
-+    len = strlen(tmp);
-+    if (len > 0 && tmp[len - 1] == '\n')
-+        tmp[len - 1] = '\0';
-+    snprintf(thre_kernel_name, sizeof(thre_kernel_name), "%s", tmp);
-+    snprintf(init_uts_ns.name.release, sizeof(init_uts_ns.name.release), "%s", tmp);
-+    return 0;
-+}
-+static int set_user_name(const char *val, const struct kernel_param *kp)
-+{
-+    char tmp[64];
-+    size_t len;
-+    snprintf(tmp, sizeof(tmp), "%s", val);
-+    len = strlen(tmp);
-+    if (len > 0 && tmp[len - 1] == '\n')
-+        tmp[len - 1] = '\0';
-+    
-+    snprintf(thre_user_name, sizeof(thre_user_name), "%s", tmp);
-+    /* init_uts_ns.name.sysname JANGAN DITIMPA agar tetap "Linux" */
-+    return 0;
-+}
-+static int set_host_name(const char *val, const struct kernel_param *kp)
-+{
-+    char tmp[64];
-+    size_t len;
-+    snprintf(tmp, sizeof(tmp), "%s", val);
-+    len = strlen(tmp);
-+    if (len > 0 && tmp[len - 1] == '\n')
-+        tmp[len - 1] = '\0';
-+
-+    snprintf(thre_host_name, sizeof(thre_host_name), "%s", tmp);
-+    /* Biarkan nodename asli jika ingin aman, atau timpa jika ingin 'uname -n' berubah */
-+    return 0;
-+}
-+static int set_compiler_name(const char *val, const struct kernel_param *kp)
-+{
-+    char tmp[128];
-+    size_t len;
-+    snprintf(tmp, sizeof(tmp), "%s", val);
-+    len = strlen(tmp);
-+    if (len > 0 && tmp[len - 1] == '\n')
-+        tmp[len - 1] = '\0';
-+
-+    snprintf(thre_compiler, sizeof(thre_compiler), "%s", tmp);
-+    return 0;
-+}
-+static int set_build_date(const char *val, const struct kernel_param *kp)
-+{
-+    char tmp[128];
-+    size_t len;
-+    snprintf(tmp, sizeof(tmp), "%s", val);
-+    len = strlen(tmp);
-+    if (len > 0 && tmp[len - 1] == '\n')
-+        tmp[len - 1] = '\0';
-+
-+    snprintf(thre_build_date, sizeof(thre_build_date), "%s", tmp);
-+    snprintf(init_uts_ns.name.version, sizeof(init_uts_ns.name.version), "%s", tmp);
-+    return 0;
-+}
-+
-+static int param_get_thre_string(char *buffer, const struct kernel_param *kp)
-+{
-+    return scnprintf(buffer, PAGE_SIZE, "%s", (char *)kp->arg);
-+}
-+
-+static const struct kernel_param_ops kernel_name_ops = { .set = set_kernel_name, .get = param_get_thre_string };
-+static const struct kernel_param_ops user_ops = { .set = set_user_name, .get = param_get_thre_string };
-+static const struct kernel_param_ops host_ops = { .set = set_host_name, .get = param_get_thre_string };
-+static const struct kernel_param_ops comp_ops = { .set = set_compiler_name, .get = param_get_thre_string };
-+static const struct kernel_param_ops date_ops = { .set = set_build_date, .get = param_get_thre_string };
-+
-+module_param_cb(thre_kernel_name, &kernel_name_ops, thre_kernel_name, 0644);
-+module_param_cb(thre_user_name,   &user_ops,        thre_user_name,   0644);
-+module_param_cb(thre_host_name,   &host_ops,        thre_host_name,   0644);
-+module_param_cb(thre_compiler,    &comp_ops,        thre_compiler,    0644);
-+module_param_cb(thre_build_date,  &date_ops,        thre_build_date,  0644);
+ SYSCALL_DEFINE2(fstat, unsigned int, fd, struct __old_kernel_stat __user *, statbuf)
+ {
+ 	struct kstat stat;
+@@ -208,6 +212,10 @@ SYSCALL_DEFINE2(fstat, unsigned int, fd, struct __old_kernel_stat __user *, stat
+ 	if (!error)
+ 		error = cp_old_stat(&stat, statbuf);
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_newfstat_ret(&fd, (struct stat __user **)&statbuf);
 +#endif
-+/* linex Project */
++
+ 	return error;
+ }
+ 
+@@ -288,11 +296,21 @@ SYSCALL_DEFINE2(newlstat, const char __user *, filename,
+ }
+ 
+ #if !defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_SYS_NEWFSTATAT)
++#ifdef CONFIG_KSU_MANUAL_HOOK
++__attribute__((hot)) 
++extern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);
++extern void ksu_handle_newfstat_ret(unsigned int *fd, struct stat __user **statbuf_ptr);
++#endif
++
+ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+-		struct stat __user *, statbuf, int, flag)
++struct stat __user *, statbuf, int, flag)
+ {
+-	struct kstat stat;
+-	int error;
++struct kstat stat;
++int error;
++
++#ifdef CONFIG_KSU_MANUAL_HOOK
++ksu_handle_stat(&dfd, &filename, &flag);
++#endif
+ 
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+@@ -309,6 +327,10 @@ SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
+ 	if (!error)
+ 		error = cp_new_stat(&stat, statbuf);
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_newfstat_ret(&fd, &statbuf);
++#endif
++
+ 	return error;
+ }
+ 
+@@ -419,6 +441,10 @@ SYSCALL_DEFINE2(lstat64, const char __user *, filename,
+ 	return error;
+ }
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++extern void ksu_handle_fstat64_ret(unsigned long *fd, struct stat64 __user **statbuf_ptr);
++#endif
++
+ SYSCALL_DEFINE2(fstat64, unsigned long, fd, struct stat64 __user *, statbuf)
+ {
+ 	struct kstat stat;
+@@ -427,6 +453,10 @@ SYSCALL_DEFINE2(fstat64, unsigned long, fd, struct stat64 __user *, statbuf)
+ 	if (!error)
+ 		error = cp_new_stat64(&stat, statbuf);
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_fstat64_ret(&fd, &statbuf);
++#endif
++
+ 	return error;
+ }
+ 
+diff --git a/kernel/reboot.c b/kernel/reboot.c
+index 2946ed1d9..97c842c68 100644
+--- a/kernel/reboot.c
++++ b/kernel/reboot.c
+@@ -277,9 +277,24 @@ static DEFINE_MUTEX(reboot_mutex);
+  *
+  * reboot doesn't sync: do that yourself before calling this.
+  */
++#ifdef CONFIG_KSU_MANUAL_HOOK
++extern int ksu_handle_sys_reboot(int *magic1, int *magic2, unsigned int *cmd, void __user **arg);
++#endif
++#ifdef CONFIG_KSU_MANUAL_HOOK
++extern int ksu_handle_sys_reboot(int *magic1, int *magic2, unsigned int *cmd, void __user **arg);
++#endif
+ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
+ 		void __user *, arg)
+ {
++#ifdef CONFIG_KSU_MANUAL_HOOK
++ksu_handle_sys_reboot(&magic1, &magic2, &cmd, &arg);
++#endif
++#ifdef CONFIG_KSU_MANUAL_HOOK
++ksu_handle_sys_reboot(&magic1, &magic2, &cmd, &arg);
++#endif
++#ifdef CONFIG_KSU_MANUAL_HOOK
++ksu_handle_sys_reboot(&magic1, &magic2, &cmd, &arg);
++#endif
+ 	struct pid_namespace *pid_ns = task_active_pid_ns(current);
+ 	char buffer[256];
+ 	int ret = 0;
