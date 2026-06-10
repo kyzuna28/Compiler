@@ -118,6 +118,7 @@ jobs:
         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch lsb-release software-properties-common gnupg
         
         [[ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]] && sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || sudo apt-get install --no-install-recommends -y libtinfo5
+        
     - name: Setup Dynamic Swap Space
       run: |
         sudo swapoff -a || true
@@ -128,6 +129,7 @@ jobs:
         sudo chmod 600 /mnt/swapfile
         sudo mkswap /mnt/swapfile
         sudo swapon /mnt/swapfile
+        
     - name: Download Toolchain
       run: |
         rm -rf $HOME/tc $HOME/tmp-tc && mkdir -p $HOME/tc
@@ -149,10 +151,12 @@ jobs:
             for tool in ar nm objcopy objdump; do ln -sf /usr/bin/llvm-$tool-21 tc/bin/llvm-$tool; done
             ;;
         esac
+        
     - name: Clone Kernel Source & Init Submodules
       run: |
         git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
         cd kernel-dir && git submodule update --init --recursive
+        
     - name: Apply Kernel Config & Tweaks
       run: |
         cd kernel-dir
@@ -221,6 +225,7 @@ jobs:
           thin) enable_cfg LTO LTO_CLANG THINLTO LTO_CLANG_THIN ;;
           *) enable_cfg LTO_NONE ;;
         esac
+        
     - name: Compile Kernel
       run: |
         cd kernel-dir
@@ -256,6 +261,7 @@ jobs:
         else
           echo "✅ [SUCCESS] Kernel compilation successful."
         fi
+        
     - name: Package with AnyKernel3
       run: |
         echo "📥 [FETCH] Mengkloning repositori AnyKernel3..."
@@ -303,6 +309,7 @@ jobs:
         echo "🏷️ [TAG] Menyiapkan nama output Artifact..."
         CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
         echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
+        
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
