@@ -245,7 +245,11 @@ jobs:
 
         [[ "${{ inputs.version_hash }}" == "no hash" ]] && echo "" > .scmversion && export LOCALVERSION_AUTO="" || rm -f .scmversion
 
-        rm -rf ../out && mkdir -p ../out
+                rm -rf ../out && mkdir -p ../out
+        
+        # BUNGKAM PENGECEKAN GNU GOLD DI MAKEFILE
+        echo "🔪 Memotong pengecekan GNU Gold yang jadul..."
+        sed -i 's/.*Cannot use CONFIG_LTO_CLANG: requires GNU gold.*/@echo "Bypassing GNU gold check for LLD"/g' Makefile
         
         echo "🛠 *Generating defconfig: vendor/xiaomi/${{ inputs.kernel-config }}..."
         make ARCH=arm64 O=../out vendor/xiaomi/${{ inputs.kernel-config }}
