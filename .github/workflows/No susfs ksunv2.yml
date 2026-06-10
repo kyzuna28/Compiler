@@ -118,7 +118,6 @@ jobs:
         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch lsb-release software-properties-common gnupg
         
         [[ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]] && sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || sudo apt-get install --no-install-recommends -y libtinfo5
-
     - name: Setup Dynamic Swap Space
       run: |
         sudo swapoff -a || true
@@ -129,7 +128,6 @@ jobs:
         sudo chmod 600 /mnt/swapfile
         sudo mkswap /mnt/swapfile
         sudo swapon /mnt/swapfile
-
     - name: Download Toolchain
       run: |
         rm -rf $HOME/tc $HOME/tmp-tc && mkdir -p $HOME/tc
@@ -151,17 +149,14 @@ jobs:
             for tool in ar nm objcopy objdump; do ln -sf /usr/bin/llvm-$tool-21 tc/bin/llvm-$tool; done
             ;;
         esac
-
     - name: Clone Kernel Source & Init Submodules
       run: |
         git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
         cd kernel-dir && git submodule update --init --recursive
-
     - name: Apply Kernel Config & Tweaks
       run: |
         cd kernel-dir
         export PATH=$HOME/tc/bin:$PATH
-
         TARGET_CONFIG="arch/arm64/configs/vendor/xiaomi/${{ inputs.kernel-config }}"
         TARGET_DEVICE_CONFIG="arch/arm64/configs/vendor/xiaomi/${{ inputs.device-config }}"
         
@@ -171,7 +166,6 @@ jobs:
         else
           echo "❌ ERROR: Base config tidak ditemukan!" && exit 1
         fi 
-
         # Clean extraversion
         sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' "$TARGET_CONFIG" || true
@@ -183,14 +177,11 @@ jobs:
         CUSTOM_COMPILER_STRING="${COMPILER_NAME:-Debian Clang} ${RAW_CLANG_VER} ✦ Pipeline: PGO • AutoFDO • BOLT • Propeller • ThinLTO • MLGO • Polly • -O3 ✦ LLD ${RAW_LLD_VER}"
         echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
         sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
-
         # Config Helpers
         enable_cfg() { for cfg in "$@"; do echo "CONFIG_$cfg=y" >> "$TARGET_CONFIG"; done; }
         disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
-
         # Base Configs
         enable_cfg SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP OVERLAY_FS        
-
         # KSU / APatch Configurations
         if [ "${{ inputs.kernelsu }}" == "apatch" ]; then
           echo "🧬 [APATCH] Mengonfigurasi APatch..."
@@ -213,7 +204,6 @@ jobs:
           disable_cfg KPROBES HAVE_KPROBES
           echo "✨ [KSU] Sukses menerapkan KernelSU!"
         fi
-
         # ROM Optimization Tweaks
         if [ "${{ inputs.rom_optimization }}" == "MIUI" ]; then
           enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE DEVFREQ_GOV_MSM_ADRENO_TZ ZRAM ZCOMP CRYPTO_ZSTD ZRAM_DEF_COMP_ZSTD SIMPLE_LMK IOSCHED_MAPLE DEFAULT_MAPLE F2FS_FS EXFAT_FS BOEFFLA_WL_BLOCKER STATE_NOTIFIER POWER_SUSPEND POWER_SUSPEND_STATE NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
@@ -221,11 +211,9 @@ jobs:
           enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE INPUT_TOUCHSCREEN DEVFREQ_GOV_MSM_ADRENO_TZ IOSCHED_ZEN DEFAULT_ZEN F2FS_FS EXFAT_FS SIMPLE_LMK TCP_CONG_BBR DEFAULT_BBR NET_SCH_FQ NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
           echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> "$TARGET_CONFIG"
         fi
-
         # Debug Disabling
         disable_cfg DEBUG_INFO DEBUG_KERNEL PROVE_LOCKING BUG COREDUMP ELF_CORE SLUB_DEBUG MSM_KGSL_BATT_STATS MI_LOG_PRINT MSM_SMD_DEBUG
         enable_cfg DEBUG_INFO_NONE BUILD_ARM64_DT_BINARIES DTB_COMPRESSION
-
         # LTO Configuration
         disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
         case "${{ inputs.lto_mode }}" in
@@ -233,7 +221,6 @@ jobs:
           thin) enable_cfg LTO LTO_CLANG THINLTO LTO_CLANG_THIN ;;
           *) enable_cfg LTO_NONE ;;
         esac
-
     - name: Compile Kernel
       run: |
         cd kernel-dir
@@ -242,18 +229,11 @@ jobs:
         export KBUILD_BUILD_HOST="project"
         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
         export LLVM_PARALLEL=1
-
         [[ "${{ inputs.version_hash }}" == "no hash" ]] && echo "" > .scmversion && export LOCALVERSION_AUTO="" || rm -f .scmversion
-
-                rm -rf ../out && mkdir -p ../out
-        
-        # BUNGKAM PENGECEKAN GNU GOLD DI MAKEFILE
-        echo "🔪 Memotong pengecekan GNU Gold yang jadul..."
-        sed -i 's/.*Cannot use CONFIG_LTO_CLANG: requires GNU gold.*/@echo "Bypassing GNU gold check for LLD"/g' Makefile
+        rm -rf ../out && mkdir -p ../out
         
         echo "🛠 *Generating defconfig: vendor/xiaomi/${{ inputs.kernel-config }}..."
         make ARCH=arm64 O=../out vendor/xiaomi/${{ inputs.kernel-config }}
-
         EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
         
         CORES=$(nproc --all)
@@ -261,10 +241,8 @@ jobs:
         [[ "${{ inputs.lto_mode }}" == "full" ]] && MAKE_JOBS=2
         [[ "$MAKE_JOBS" -lt 2 ]] && MAKE_JOBS=2
         [[ "$MAKE_JOBS" -gt 8 ]] && MAKE_JOBS=8
-
         CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
         CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
-
         echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
           CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
@@ -278,13 +256,11 @@ jobs:
         else
           echo "✅ [SUCCESS] Kernel compilation successful."
         fi
-
     - name: Package with AnyKernel3
       run: |
         echo "📥 [FETCH] Mengkloning repositori AnyKernel3..."
         git clone --depth=1 ${{ inputs.anykernel-url }} AnyKernel3
         rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk,*.txt,*.md}
-
         KERNEL_DIR="out/arch/arm64/boot"
         
         echo "⚙️ [PROSES] Menyiapkan file kernel..."
@@ -308,14 +284,12 @@ jobs:
             gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz
           fi
         fi
-
         if [[ -f "$KERNEL_DIR/dtbo.img" ]]; then
           echo "💾 [INFO] Ditemukan dtbo.img, menyalin ke AnyKernel3..."
           cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
         fi
         
         rm -f AnyKernel3/*placeholder
-
         # --- Pengecekan Akhir (Status Berhasil / Gagal) ---
         echo "🔍 [CEK] Memverifikasi hasil packaging AnyKernel3..."
         if ls AnyKernel3/Image* 1> /dev/null 2>&1; then
@@ -326,11 +300,9 @@ jobs:
           echo "💀 [FATAL] Terjadi kesalahan saat memindahkan kernel build. Membatalkan proses..."
           exit 1
         fi
-
         echo "🏷️ [TAG] Menyiapkan nama output Artifact..."
         CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
         echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
-
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
