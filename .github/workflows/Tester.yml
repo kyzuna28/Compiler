@@ -221,16 +221,16 @@ jobs:
       run: |
         cd kernel-dir  
         export PATH=$HOME/tc/bin:$HOME/gcc64/bin:$HOME/gcc32/bin:$PATH  
-        export KBUILD_BUILD_USER="${{ inputs.project_name }}"  
-        export KBUILD_BUILD_HOST="project"  
+        export KBUILD_BUILD_USER="${{ inputs.project_name }}"
+        export KBUILD_BUILD_HOST="project"
         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"  
         export LLVM_PARALLEL=1
 
         [[ "${{ inputs.version_hash }}" == "no hash" ]] && echo "" > .scmversion && export LOCALVERSION_AUTO="" || rm -f .scmversion
 
-        rm -rf ../out && mkdir -p ../out  
+        rm -rf ../out && mkdir -p ../out 
         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
-
+        
         EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
 
         CORES=$(nproc --all)
@@ -241,15 +241,15 @@ jobs:
 
         CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
         CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
-
-        echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"  
-        make -j$MAKE_JOBS ARCH=arm64 O=../out \  
-          CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \  
-          LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu- \  
-          LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \  
-          KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \  
-          Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
         
+        echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS" 
+        make -j$MAKE_JOBS ARCH=arm64 O=../out \
+          CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
+          LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu- \
+          LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
+          KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
+          Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
+          
         if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
           echo "❌ [ERROR] Kernel compilation failed." && exit 1
         else
