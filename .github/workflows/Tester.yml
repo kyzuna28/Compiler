@@ -203,7 +203,7 @@ jobs:
         fi
 
         # Debug Disabling
-        disable_cfg DEBUG_INFO DEBUG_KERNEL PROVE_LOCKING COREDUMP ELF_CORE SLUB_DEBUG MSM_KGSL_BATT_STATS MI_LOG_PRINT MSM_SMD_DEBUG
+        disable_cfg DEBUG_INFO DEBUG_KERNEL PROVE_LOCKING BUG COREDUMP ELF_CORE SLUB_DEBUG MSM_KGSL_BATT_STATS MI_LOG_PRINT MSM_SMD_DEBUG
         enable_cfg DEBUG_INFO_NONE BUILD_ARM64_DT_BINARIES DTB_COMPRESSION
 
         # LTO Configuration
@@ -248,7 +248,7 @@ jobs:
           LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
           LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
           KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
-          Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
+          Image.gz Image.gz-dtb dtbs 2>&1
         
         if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
           echo "❌ [ERROR] Kernel compilation failed." && exit 1
