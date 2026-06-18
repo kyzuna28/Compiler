@@ -227,11 +227,10 @@ jobs:
 
         rm -rf ../out && mkdir -p ../out
         
-        # Ditambahkan HOSTCC, HOSTCXX, dan CLANG_TRIPLE untuk mengamankan proses defconfig
+        # Di sini HOSTCFLAGS dikosongkan agar biner dasar tetap dicompile sebagai x86_64
         make ARCH=arm64 O=../out \
           CC=clang HOSTCC=clang HOSTCXX=clang++ LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
           LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-          HOSTCFLAGS="--target=aarch64-linux-gnu" \
           ${{ inputs.kernel-config }}
 
         EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
@@ -247,12 +246,12 @@ jobs:
 
         echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
         
-        # Menyinkronkan variabel compiler induk di proses utama
+        # Menyertakan target cross-compile aman lewat KCFLAGS dan biner host tetap x86_64 bawaan ubuntu
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
           CC=clang HOSTCC=clang HOSTCXX=clang++ LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
           LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
           LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
-          KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
+          KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer --target=aarch64-linux-gnu $EXTRA_CFLAGS" \
           Image.gz Image.gz-dtb dtbs 2>&1
         
         if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
