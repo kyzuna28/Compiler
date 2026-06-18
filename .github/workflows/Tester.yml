@@ -75,12 +75,12 @@ on:
         - hash
       kernel-url:
         description: 'Kernel Source URL'
-        default: 'https://github.com/kyzuna28/backup.git'
+        default: 'https://github.com/kyzuna28/bpf.git'
         required: true
         type: string
       kernel-branch:
         description: 'Kernel Source Branch'
-        default: 'bpf'
+        default: 'v8'
         required: true
         type: string
       kernel-config:
