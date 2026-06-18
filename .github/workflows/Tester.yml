@@ -113,14 +113,11 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install --no-install-recommends -y \
-          gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc \
-          aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 \
-          libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch \
-          lsb-release software-properties-common gnupg
+        sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch lsb-release software-properties-common gnupg
 
         if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
           sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || true
+          sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.6.0 || true
         else
           sudo apt-get install --no-install-recommends -y libtinfo5 || true
         fi
@@ -129,7 +126,8 @@ jobs:
       run: |
         sudo swapoff -a || true
         sudo rm -f /mnt/swapfile || true
-        SWAP_SIZE=\( ([[ " \){{ inputs.lto_mode }}" == "full" ]] && echo "16G" || echo "8G")
+        SWAP_SIZE=$([[ "${{ inputs.lto_mode }}" == "full" ]] && echo "16G" || echo "8G")
+        
         sudo fallocate -l $SWAP_SIZE /mnt/swapfile
         sudo chmod 600 /mnt/swapfile
         sudo mkswap /mnt/swapfile
@@ -173,8 +171,8 @@ jobs:
         sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' "$TARGET_CONFIG" || true
         
-        # Custom Compiler String
-        COMPILER_NAME=\( (echo " \){{ inputs.compiler }}" | awk -F'-' '{print toupper(substr($1,1,1)) substr($1,2) " Clang"}')
+        # Custom Compiler String setup
+        COMPILER_NAME=$(echo "${{ inputs.compiler }}" | awk -F'-' '{print toupper(substr($1,1,1)) substr($1,2) " Clang"}')
         RAW_CLANG_VER=$(clang --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
         RAW_LLD_VER=$(ld.lld --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || echo "$RAW_CLANG_VER")
         CUSTOM_COMPILER_STRING="${COMPILER_NAME:-Debian Clang} ${RAW_CLANG_VER} ✦ Pipeline: PGO • AutoFDO • BOLT • Propeller • ThinLTO • MLGO • Polly • -O3 ✦ LLD ${RAW_LLD_VER}"
@@ -183,22 +181,17 @@ jobs:
 
         # Config Helpers
         enable_cfg() { for cfg in "$@"; do echo "CONFIG_$cfg=y" >> "$TARGET_CONFIG"; done; }
-        disable_cfg() { for cfg in "$@"; do 
-          sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" 2>/dev/null || true
-          echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"
-        done; }
-
-        # === FIX UTAMA: Stack Protector Error ===
-        echo "🔧 [FIX] Disabling CONFIG_CC_STACKPROTECTOR_STRONG..."
-        disable_cfg CC_STACKPROTECTOR_STRONG CC_STACKPROTECTOR
+        disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
 
         # Base Configs
         enable_cfg SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP OVERLAY_FS
 
-        # APatch Mode
+        # APatch Mode (No KSU, No Patch)
         if [ "${{ inputs.apatch_mode }}" = "apatch" ]; then
           echo "🧬 [APATCH] Mengaktifkan mode APatch..."
+          echo "⚙️ [APATCH] Menyesuaikan konfigurasi defconfig kernel..."
           enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES OVERLAY_FS
+          echo "✅ [APATCH] Sukses menerapkan konfigurasi APatch!"
         fi
 
         # ROM Optimization Tweaks
@@ -221,9 +214,6 @@ jobs:
           *) enable_cfg LTO_NONE ;;
         esac
 
-        # Finalize config
-        make ARCH=arm64 O=../out ${{ inputs.kernel-config }} olddefconfig
-
     - name: Compile Kernel
       run: |
         cd kernel-dir
@@ -238,7 +228,7 @@ jobs:
         rm -rf ../out && mkdir -p ../out
         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
 
-        EXTRA_CFLAGS=\( ([[ " \){{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
+        EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
 
         CORES=$(nproc --all)
         MAKE_JOBS=$(( (CORES + 1) / 2 ))
@@ -246,14 +236,14 @@ jobs:
         [[ "$MAKE_JOBS" -lt 2 ]] && MAKE_JOBS=2
         [[ "$MAKE_JOBS" -gt 8 ]] && MAKE_JOBS=8
 
-        CLEAN_ROM=\( (echo " \){{ inputs.rom_type }}" | tr -d ' ')
-        CLEAN_KERNEL=\( (echo " \){{ inputs.kernel_name }}" | tr -d ' ')
+        CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
+        CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
 
         echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
           CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
           LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-          LOCALVERSION="-\( {CLEAN_KERNEL}- \){CLEAN_ROM}" \
+          LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
           KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
           Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
         
@@ -300,16 +290,19 @@ jobs:
         
         rm -f AnyKernel3/*placeholder
 
+        # --- Pengecekan Akhir (Status Berhasil / Gagal) ---
         echo "🔍 [CEK] Memverifikasi hasil packaging AnyKernel3..."
         if ls AnyKernel3/Image* 1> /dev/null 2>&1; then
-          echo "✨ [SUKSES] File kernel berhasil dipaketkan!"
+          echo "✨ [SUKSES] File kernel berhasil dipaketkan ke dalam folder AnyKernel3!"
           echo "🎉 [SELESAI] Siap untuk proses Upload."
         else
-          echo "❌ [GAGAL] File Image kernel tidak ditemukan!"
+          echo "❌ [GAGAL] File Image kernel tidak ditemukan di folder AnyKernel3!"
+          echo "💀 [FATAL] Terjadi kesalahan saat memindahkan kernel build. Membatalkan proses..."
           exit 1
         fi
 
-        CLEAN_ZIP_NAME=\( (echo " \){{ inputs.zip_name }}" | tr ' ' '_')
+        echo "🏷️ [TAG] Menyiapkan nama output Artifact..."
+        CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
         echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
 
     - name: Upload Artifacts
