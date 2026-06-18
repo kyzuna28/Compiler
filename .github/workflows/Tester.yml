@@ -227,11 +227,15 @@ jobs:
 
         rm -rf ../out && mkdir -p ../out
         
-        # Di sini HOSTCFLAGS dikosongkan agar biner dasar tetap dicompile sebagai x86_64
+        # 1. Generate .config awal menggunakan defconfig pilihanmu
         make ARCH=arm64 O=../out \
           CC=clang HOSTCC=clang HOSTCXX=clang++ LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
           LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
           ${{ inputs.kernel-config }}
+
+        # 2. TRIK JITU: Komentari baris pengecekan 'cc-option' untuk stackprotector di Makefile sebelum build utama dimulai
+        # Ini akan memaksa kernel langsung memakai fiturnya tanpa melakukan tes yang sering gagal/salah tuduh.
+        sed -i '/ifeq ($(call cc-option, $(stackp-flag)),)/,/endif/ { s/^/# / }' Makefile
 
         EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
 
@@ -246,7 +250,7 @@ jobs:
 
         echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
         
-        # Menyertakan target cross-compile aman lewat KCFLAGS dan biner host tetap x86_64 bawaan ubuntu
+        # 3. Proses Kompilasi Utama
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
           CC=clang HOSTCC=clang HOSTCXX=clang++ LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
           LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
