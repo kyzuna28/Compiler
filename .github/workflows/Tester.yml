@@ -200,7 +200,15 @@ jobs:
           echo "✨ [KSU] Sukses menerapkan KernelSU!"
         else
           echo "🧬 [APATCH] Mengonfigurasi APatch..."
-          enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
+          # Wajib aktif untuk APatch
+          enable_cfg KALLSYMS KALLSYMS_ALL KPROBES HAVE_KPROBES
+          
+          # Matikan fitur yang merusak pembacaan tabel RELA oleh kptools
+          disable_cfg KALLSYMS_BASE_RELATIVE RANDOMIZE_BASE RELR CONFIG_RELR
+          
+          # Paksa LTO mati khusus saat build APatch, karena LTO mengacak relokasi
+          disable_cfg LTO LTO_CLANG LTO_CLANG_FULL LTO_CLANG_THIN THINLTO LTO_NONE
+          enable_cfg LTO_NONE
           echo "✅ [APATCH] Selesai menerapkan config!"
         fi
         
