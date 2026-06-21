@@ -200,7 +200,7 @@ jobs:
           echo "✨ [KSU] Sukses menerapkan KernelSU!"
         else
           echo "🧬 [APATCH] Mengonfigurasi APatch..."
-          enable_cfg KALLSYMS KALLSYMS_ALL DEBUG_INFO KPROBES HAVE_KPROBES CONFIG_RELOCATABLE CONFIG_RANDOMIZE_BASE
+          enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
           echo "✅ [APATCH] Selesai menerapkan config!"
         fi
         
@@ -254,7 +254,7 @@ jobs:
           CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
           LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
           LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
-          KCFLAGS="-Wno-error -fno-builtin $EXTRA_CFLAGS" \
+          KCFLAGS="-Os -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
           Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
         
         if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
