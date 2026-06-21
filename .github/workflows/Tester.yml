@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
-name: susfs/include bpf
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.apatch_mode }}
+name: Tes build
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }} | ${{ inputs.rom_optimization }}
 
 on:
   workflow_dispatch:
@@ -57,14 +57,16 @@ on:
         - AOSP
         - MIUI
         - no tweak
-      apatch_mode:
-        description: 'Mode APatch (APatch)'
-        default: 'no apatch'
+      kernelsu:
+        description: 'Mode Root (False = APatch)'
+        default: 'false'
         required: true
         type: choice
         options:
-        - apatch
-        - no apatch
+        - manager-3.0
+        - all-3.1
+        - next-3.2
+        - "apatch"
       version_hash:
         description: 'Include Version Hash'
         default: 'no hash'
@@ -75,12 +77,12 @@ on:
         - hash
       kernel-url:
         description: 'Kernel Source URL'
-        default: 'https://github.com/kyzuna28/bpf.git'
+        default: 'https://github.com/kyzuna28/wan13.git'
         required: true
         type: string
       kernel-branch:
         description: 'Kernel Source Branch'
-        default: 'v8'
+        default: '13'
         required: true
         type: string
       kernel-config:
@@ -101,29 +103,23 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-    - name: Clean Environment
+    - name: Clean Environment & Install Dependencies
       run: |
+        # Setup timezone & free up disk space
         sudo timedatectl set-timezone Asia/Jakarta
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-        sudo docker image prune --all --force
-
-    - name: Checkout Repository
-      uses: actions/checkout@v4
-
-    - name: Install Dependencies
-      run: |
+        sudo docker image prune -af
+        
+        # Install required dependencies
         sudo apt-get update
         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch lsb-release software-properties-common gnupg
-
-        if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
-          sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || true
-          sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.6.0 || true
-        else
-          sudo apt-get install --no-install-recommends -y libtinfo5 || true
-        fi
+        
+        # Symlink libtinfo fallback
+        [[ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]] && sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || sudo apt-get install --no-install-recommends -y libtinfo5
 
     - name: Setup Dynamic Swap Space
       run: |
+        # Configure swap size based on LTO mode
         sudo swapoff -a || true
         sudo rm -f /mnt/swapfile || true
         SWAP_SIZE=$([[ "${{ inputs.lto_mode }}" == "full" ]] && echo "16G" || echo "8G")
@@ -135,9 +131,10 @@ jobs:
 
     - name: Download Toolchain
       run: |
-        rm -rf $HOME/tc $HOME/tmp-tc && mkdir -p $HOME/tc
+        mkdir -p $HOME/tc
         cd $HOME
         
+        # Download selected compiler
         case "${{ inputs.compiler }}" in
           zyc-clang) git clone --depth=1 https://gitlab.com/clangsantoni/zyc_clang.git -b 21 tc ;;
           yuki-clang) git clone --depth=1 https://gitlab.com/TheXPerienceProject/yuki_clang.git -b 18.0.0 tc ;;
@@ -161,7 +158,7 @@ jobs:
         cd kernel-dir
         git submodule update --init --recursive
 
-    - name: Apply Kernel Config & Tweaks
+    - name: Apply Kernel Config & Root Solutions
       run: |
         cd kernel-dir
         export PATH=$HOME/tc/bin:$PATH
@@ -186,14 +183,27 @@ jobs:
         # Base Configs
         enable_cfg SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP OVERLAY_FS
 
-        # APatch Mode (No KSU, No Patch)
-        if [ "${{ inputs.apatch_mode }}" = "apatch" ]; then
-          echo "🧬 [APATCH] Mengaktifkan mode APatch..."
-          echo "⚙️ [APATCH] Menyesuaikan konfigurasi defconfig kernel..."
-          enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES OVERLAY_FS
-          echo "✅ [APATCH] Sukses menerapkan konfigurasi APatch!"
+        # KSU / APatch Configurations
+        if [ "${{ inputs.kernelsu }}" != "apatch" ]; then
+          echo "🚀 [KSU] Memulai injeksi KernelSU..."
+          echo "📥 [KSU] Mengunduh & menerapkan patch manual hook..."
+          wget -q https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
+          patch -p1 < kernel-4.4_4.9.patch || true
+          case "${{ inputs.kernelsu }}" in
+            manager-3.0) echo "📥 [KSU] Memasang Manager 3.0..."; curl -s https://raw.githubusercontent.com/ThRE-Team/Next-v3/refs/heads/main/setup.sh | bash ;;
+            all-3.1) echo "📥 [KSU] Memasang Next (Main)..."; curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main ;;
+            next-3.2) echo "📥 [KSU] Memasang Next v3.2.0..."; curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s v3.2.0 ;;
+          esac
+          echo "⚙️ [KSU] Menyesuaikan defconfig kernel..."
+          enable_cfg KSU KSU_MANUAL_HOOK
+          disable_cfg KPROBES HAVE_KPROBES
+          echo "✨ [KSU] Sukses menerapkan KernelSU!"
+        else
+          echo "🧬 [APATCH] Mengonfigurasi APatch..."
+          enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
+          echo "✅ [APATCH] Selesai menerapkan config!"
         fi
-
+        
         # ROM Optimization Tweaks
         if [ "${{ inputs.rom_optimization }}" == "MIUI" ]; then
           enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE DEVFREQ_GOV_MSM_ADRENO_TZ ZRAM ZCOMP CRYPTO_ZSTD ZRAM_DEF_COMP_ZSTD SIMPLE_LMK IOSCHED_MAPLE DEFAULT_MAPLE F2FS_FS EXFAT_FS BOEFFLA_WL_BLOCKER STATE_NOTIFIER POWER_SUSPEND POWER_SUSPEND_STATE NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
@@ -201,11 +211,7 @@ jobs:
           enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE INPUT_TOUCHSCREEN DEVFREQ_GOV_MSM_ADRENO_TZ IOSCHED_ZEN DEFAULT_ZEN F2FS_FS EXFAT_FS SIMPLE_LMK TCP_CONG_BBR DEFAULT_BBR NET_SCH_FQ NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
           echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> "$TARGET_CONFIG"
         fi
-
-        # Debug Disabling
-        disable_cfg DEBUG_INFO DEBUG_KERNEL PROVE_LOCKING BUG COREDUMP ELF_CORE SLUB_DEBUG MSM_KGSL_BATT_STATS MI_LOG_PRINT MSM_SMD_DEBUG
-        enable_cfg DEBUG_INFO_NONE BUILD_ARM64_DT_BINARIES DTB_COMPRESSION
-
+        
         # LTO Configuration
         disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
         case "${{ inputs.lto_mode }}" in
@@ -252,7 +258,7 @@ jobs:
         else
           echo "✅ [SUCCESS] Kernel compilation successful."
         fi
-
+        
     - name: Package with AnyKernel3
       run: |
         echo "📥 [FETCH] Mengkloning repositori AnyKernel3..."
