@@ -200,7 +200,7 @@ jobs:
           echo "✨ [KSU] Sukses menerapkan KernelSU!"
         else
           echo "🧬 [APATCH] Mengonfigurasi APatch..."
-          enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES DEBUG_INFO
+          enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
           echo "✅ [APATCH] Selesai menerapkan config!"
         fi
         
