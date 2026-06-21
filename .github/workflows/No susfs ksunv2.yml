@@ -181,11 +181,14 @@ jobs:
         CUSTOM_COMPILER_STRING="${COMPILER_NAME:-Debian Clang} ${RAW_CLANG_VER} ✦ Pipeline: PGO • AutoFDO • BOLT • Propeller • ThinLTO • MLGO • Polly • -O3 ✦ LLD ${RAW_LLD_VER}"
         echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
         sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
+        
         # Config Helpers
         enable_cfg() { for cfg in "$@"; do echo "CONFIG_$cfg=y" >> "$TARGET_CONFIG"; done; }
         disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
+        
         # Base Configs
-        enable_cfg SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP OVERLAY_FS        
+        enable_cfg SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP OVERLAY_FS
+        
         # KSU / APatch Configurations
         if [ "${{ inputs.kernelsu }}" == "apatch" ]; then
           echo "🧬 [APATCH] Mengonfigurasi APatch..."
@@ -208,6 +211,7 @@ jobs:
           disable_cfg KPROBES HAVE_KPROBES
           echo "✨ [KSU] Sukses menerapkan KernelSU!"
         fi
+        
         # ROM Optimization Tweaks
         if [ "${{ inputs.rom_optimization }}" == "MIUI" ]; then
           enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE DEVFREQ_GOV_MSM_ADRENO_TZ ZRAM ZCOMP CRYPTO_ZSTD ZRAM_DEF_COMP_ZSTD SIMPLE_LMK IOSCHED_MAPLE DEFAULT_MAPLE F2FS_FS EXFAT_FS BOEFFLA_WL_BLOCKER STATE_NOTIFIER POWER_SUSPEND POWER_SUSPEND_STATE NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
@@ -215,9 +219,11 @@ jobs:
           enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE INPUT_TOUCHSCREEN DEVFREQ_GOV_MSM_ADRENO_TZ IOSCHED_ZEN DEFAULT_ZEN F2FS_FS EXFAT_FS SIMPLE_LMK TCP_CONG_BBR DEFAULT_BBR NET_SCH_FQ NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
           echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> "$TARGET_CONFIG"
         fi
+        
         # Debug Disabling
         disable_cfg DEBUG_INFO DEBUG_KERNEL PROVE_LOCKING BUG COREDUMP ELF_CORE SLUB_DEBUG MSM_KGSL_BATT_STATS MI_LOG_PRINT MSM_SMD_DEBUG
         enable_cfg DEBUG_INFO_NONE BUILD_ARM64_DT_BINARIES DTB_COMPRESSION
+        
         # LTO Configuration
         disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
         case "${{ inputs.lto_mode }}" in
