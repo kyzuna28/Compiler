@@ -1,5 +1,5 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
-name: Tes build
+name: Tes Build
 run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }} | ${{ inputs.rom_optimization }}
 
 on:
@@ -172,7 +172,7 @@ jobs:
         COMPILER_NAME=$(echo "${{ inputs.compiler }}" | awk -F'-' '{print toupper(substr($1,1,1)) substr($1,2) " Clang"}')
         RAW_CLANG_VER=$(clang --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
         RAW_LLD_VER=$(ld.lld --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || echo "$RAW_CLANG_VER")
-        CUSTOM_COMPILER_STRING="${COMPILER_NAME:-Debian Clang} ${RAW_CLANG_VER} ✦ Pipeline: PGO • AutoFDO • BOLT • Propeller • ThinLTO • MLGO • Polly • -O3 ✦ LLD ${RAW_LLD_VER}"
+        CUSTOM_COMPILER_STRING="${COMPILER_NAME:-Debian Clang} ${RAW_CLANG_VER} ✦ Pipeline: pgo • autofdo • bolt • propeller • thinlto • mlgo • polly • -o3 ✦ LLD ${RAW_LLD_VER}"
         echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
         sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
 
@@ -200,15 +200,7 @@ jobs:
           echo "✨ [KSU] Sukses menerapkan KernelSU!"
         else
           echo "🧬 [APATCH] Mengonfigurasi APatch..."
-          # Wajib aktif untuk APatch
-          enable_cfg KALLSYMS KALLSYMS_ALL KPROBES HAVE_KPROBES
-          
-          # Matikan fitur yang merusak pembacaan tabel RELA oleh kptools
-          disable_cfg KALLSYMS_BASE_RELATIVE RANDOMIZE_BASE RELR CONFIG_RELR
-          
-          # Paksa LTO mati khusus saat build APatch, karena LTO mengacak relokasi
-          disable_cfg LTO LTO_CLANG LTO_CLANG_FULL LTO_CLANG_THIN THINLTO LTO_NONE
-          enable_cfg LTO_NONE
+          enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
           echo "✅ [APATCH] Selesai menerapkan config!"
         fi
         
@@ -219,7 +211,11 @@ jobs:
           enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE INPUT_TOUCHSCREEN DEVFREQ_GOV_MSM_ADRENO_TZ IOSCHED_ZEN DEFAULT_ZEN F2FS_FS EXFAT_FS SIMPLE_LMK TCP_CONG_BBR DEFAULT_BBR NET_SCH_FQ NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
           echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> "$TARGET_CONFIG"
         fi
-        
+
+        # Debug Disabling
+        disable_cfg DEBUG_INFO DEBUG_KERNEL PROVE_LOCKING BUG COREDUMP ELF_CORE SLUB_DEBUG MSM_KGSL_BATT_STATS MI_LOG_PRINT MSM_SMD_DEBUG
+        enable_cfg DEBUG_INFO_NONE BUILD_ARM64_DT_BINARIES DTB_COMPRESSION
+
         # LTO Configuration
         disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
         case "${{ inputs.lto_mode }}" in
@@ -242,7 +238,12 @@ jobs:
         rm -rf ../out && mkdir -p ../out
         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
 
+        # Target compiler flag khusus Debian Clang
         EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
+
+        # 🚀 OPTIMASI SNAPDRAGON 845 (Kryo 385 / Cortex-A75 + A55)
+        # Menggunakan -O3 untuk performa penuh dan penyelarasan cache CPU
+        OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75.cortex-a55 -mtune=cortex-a75.cortex-a55 -falign-functions=64"
 
         CORES=$(nproc --all)
         MAKE_JOBS=$(( (CORES + 1) / 2 ))
@@ -254,13 +255,20 @@ jobs:
         CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
 
         echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
+        
+        # ⚡ EKSEKUSI FULL LLVM MURNI (Host & Target)
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
-          CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-          LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
+          LLVM=1 LLVM_IAS=1 \
+          CC=clang HOSTCC=clang HOSTCXX=clang++ \
+          LD=ld.lld HOSTLD=ld.lld \
+          AR=llvm-ar HOSTAR=llvm-ar NM=llvm-nm \
+          OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
+          STRIP=llvm-strip READELF=llvm-readelf \
+          CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
           LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
-          KCFLAGS="-w -Wno-error -fno-builtin" \
-          HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
-          
+          KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
+          Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
+        
         if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
           echo "❌ [ERROR] Kernel compilation failed." && exit 1
         else
