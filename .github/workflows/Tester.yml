@@ -240,11 +240,8 @@ jobs:
 
         # Target compiler flag khusus Debian Clang
         EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
-
-        # 🚀 OPTIMASI SNAPDRAGON 845 (Kryo 385 / Cortex-A75 + A55)
-        # Menggunakan -O3 untuk performa penuh dan penyelarasan cache CPU
-        OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75.cortex-a55 -mtune=cortex-a75.cortex-a55 -falign-functions=64"
-
+        OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75 -mtune=cortex-a75 -falign-functions=64"
+        
         CORES=$(nproc --all)
         MAKE_JOBS=$(( (CORES + 1) / 2 ))
         [[ "${{ inputs.lto_mode }}" == "full" ]] && MAKE_JOBS=2
