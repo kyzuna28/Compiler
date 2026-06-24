@@ -77,12 +77,12 @@ on:
         - hash
       kernel-url:
         description: 'Kernel Source URL'
-        default: 'https://github.com/kyzuna28/wan13.git'
+        default: 'https://github.com/kyzuna28/kyy.git'
         required: true
         type: string
       kernel-branch:
         description: 'Kernel Source Branch'
-        default: '13'
+        default: 'nse'
         required: true
         type: string
       kernel-config:
