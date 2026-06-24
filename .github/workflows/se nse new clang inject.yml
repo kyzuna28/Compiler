@@ -59,7 +59,7 @@ on:
         - no tweak
       kernelsu:
         description: 'Mode Root (False = APatch)'
-        default: 'false'
+        default: 'none'
         required: true
         type: choice
         options:
@@ -67,6 +67,7 @@ on:
         - all-3.1
         - next-3.2
         - "apatch"
+        - "none"
       version_hash:
         description: 'Include Version Hash'
         default: 'no hash'
@@ -183,8 +184,16 @@ jobs:
         # Base Configs
         enable_cfg SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP OVERLAY_FS
 
-        # KSU / APatch Configurations
-        if [ "${{ inputs.kernelsu }}" != "apatch" ]; then
+        # KSU / APatch / None Configurations
+        if [ "${{ inputs.kernelsu }}" == "none" ]; then
+          echo "🧹 [ROOT] Mode 'none' dipilih. Skip instalasi Root (Kernel bersih tanpa patch/ksu/apatch)."
+          
+        elif [ "${{ inputs.kernelsu }}" == "apatch" ]; then
+          echo "🧬 [APATCH] Mengonfigurasi APatch..."
+          enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
+          echo "✅ [APATCH] Selesai menerapkan config!"
+          
+        else
           echo "🚀 [KSU] Memulai injeksi KernelSU..."
           echo "📥 [KSU] Mengunduh & menerapkan patch manual hook..."
           wget -q https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
@@ -198,10 +207,6 @@ jobs:
           enable_cfg KSU KSU_MANUAL_HOOK
           disable_cfg KPROBES HAVE_KPROBES
           echo "✨ [KSU] Sukses menerapkan KernelSU!"
-        else
-          echo "🧬 [APATCH] Mengonfigurasi APatch..."
-          enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
-          echo "✅ [APATCH] Selesai menerapkan config!"
         fi
         
         # ROM Optimization Tweaks
@@ -211,7 +216,7 @@ jobs:
           enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE INPUT_TOUCHSCREEN DEVFREQ_GOV_MSM_ADRENO_TZ IOSCHED_ZEN DEFAULT_ZEN F2FS_FS EXFAT_FS SIMPLE_LMK TCP_CONG_BBR DEFAULT_BBR NET_SCH_FQ NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
           echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> "$TARGET_CONFIG"
         fi
-
+        
         # Debug Disabling
         disable_cfg DEBUG_INFO DEBUG_KERNEL PROVE_LOCKING BUG COREDUMP ELF_CORE SLUB_DEBUG MSM_KGSL_BATT_STATS MI_LOG_PRINT MSM_SMD_DEBUG
         enable_cfg DEBUG_INFO_NONE BUILD_ARM64_DT_BINARIES DTB_COMPRESSION
