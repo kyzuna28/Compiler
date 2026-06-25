@@ -212,7 +212,7 @@ jobs:
         elif [ "${{ inputs.kernelsu }}" == "suki-ultra" ]; then
           echo "☢️ [SUKI-ULTRA] Memulai injeksi SUKI-ULTRA (Mode Standar)..."
           echo "📩 [SUKI-ULTRA] Mengunduh patch hooksultra dari GitHub repo Compiler..."
-          wget -q https://raw.githubusercontent.com/kyzuna28/Compiler/main/hookultra.patch
+          wget -q https://raw.githubusercontent.com/kyzuna28/Compiler/main/hooksultra.patch
           patch -p1 < hooksultra.patch || true
           
           echo "📩 [SUKI-ULTRA] Memasang driver SUKI-ULTRA..."
