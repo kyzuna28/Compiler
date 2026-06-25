@@ -1,297 +1,262 @@
-From 11fac0a1ba7982ce0bb503319252e4a4fc5c4219 Mon Sep 17 00:00:00 2001
-From: Vinayak Menon <vinmenon@codeaurora.org>
-Date: Wed, 4 Mar 2015 20:41:21 +0530
-Subject: [PATCH] lowmemorykiller: adapt to vmpressure
+From f7a01994e35abd48c2625a2c00177b98fc550df3 Mon Sep 17 00:00:00 2001
+From: kyzuna28 <dzakysptr28@gmail.com>
+Date: Thu, 25 Jun 2026 23:01:30 +0700
+Subject: [PATCH] hook vip
 
-There were issues reported, where page cache thrashing was
-observed because of LMK not killing tasks when required,
-resulting in sluggishness and higher app launch latency.
-LMK does not kill a task for the following reasons.
-1. The free and file pages are above the LMK thresholds
-2. LMK tries to pick task with an adj level corresponding
-to current thresholds, but fails to do so because of the
-absence of tasks in that level.
-But sometimes it is better to kill a lower adj task, than thrashing.
-And there are cases where the number of file pages are huge, though
-we dont thrash, the reclaim process becomes time consuming, since
-LMK triggers will be delayed because of higher number of file
-pages. Even in such cases, when reclaim path finds it difficult
-to reclaim pages, it is better to trigger lmk to free up some memory
-faster.
-
-The basic idea here is to make LMK more aggressive dynamically
-when such a thrashing scenario is detected.
-
-To detect thrashing, this patch uses vmpressure events.
-The values of vmpressure upon which an action has to be taken,
-was derived empirically.
-
-This patch also adds tracepoints to validate this feature,
-almk_shrink and almk_vmpressure.
-
-Two knobs are available for the user to tune adaptive lmk
-behaviour.
-
-/sys/module/lowmemorykiller/parameters/adaptive_lmk - Write
-1 to enable the feature, 0 to disable. By default disabled.
-
-/sys/module/lowmemorykiller/parameters/vmpressure_file_min -
-This parameter controls the behaviour of LMK when vmpressure
-is in the range of 90-94. Adaptive lmk triggers based on number file
-pages wrt vmpressure_file_min, when vmpressure is in the range of
-90-94. Usually this is a pseudo minfree value, higher than the
-highest configured value in minfree array.
-
-Change-Id: I1a08160c35d3e33bdfd1d2c789c288fc07d0f0d3
-Signed-off-by: Vinayak Menon <vinmenon@codeaurora.org>
 ---
- drivers/staging/android/lowmemorykiller.c | 103 +++++++++++++++++++++-
- include/trace/events/almk.h               |  84 ++++++++++++++++++
- 2 files changed, 186 insertions(+), 1 deletion(-)
- create mode 100644 include/trace/events/almk.h
+ drivers/input/input.c | 12 ++++++++++++
+ fs/exec.c             | 16 ++++++++++++++++
+ fs/open.c             | 12 ++++++++++++
+ fs/read_write.c       | 11 +++++++++++
+ fs/stat.c             | 29 ++++++++++++++++++++++++++++-
+ kernel/reboot.c       |  9 +++++++++
+ kernel/sys.c          |  7 +++++++
+ 7 files changed, 95 insertions(+), 1 deletion(-)
 
-diff --git a/drivers/staging/android/lowmemorykiller.c b/drivers/staging/android/lowmemorykiller.c
-index b6609f2c5790..b85094dd2c9e 100644
---- a/drivers/staging/android/lowmemorykiller.c
-+++ b/drivers/staging/android/lowmemorykiller.c
-@@ -47,6 +47,10 @@
- #include <linux/swap.h>
- #include <linux/fs.h>
- #include <linux/cpuset.h>
-+#include <linux/vmpressure.h>
+diff --git a/drivers/input/input.c b/drivers/input/input.c
+index 378717d1b..9959b78ff 100644
+--- a/drivers/input/input.c
++++ b/drivers/input/input.c
+@@ -436,11 +436,23 @@ static void input_handle_event(struct input_dev *dev,
+  * to 'seed' initial state of a switch or initial position of absolute
+  * axis, etc.
+  */
 +
-+#define CREATE_TRACE_POINTS
-+#include <trace/events/almk.h>
- 
- #ifdef CONFIG_HIGHMEM
- #define _ZONE ZONE_HIGHMEM
-@@ -93,6 +97,93 @@ static unsigned long lowmem_count(struct shrinker *s,
- 		global_node_page_state(NR_INACTIVE_FILE);
- }
- 
-+static atomic_t shift_adj = ATOMIC_INIT(0);
-+static short adj_max_shift = 353;
-+
-+/* User knob to enable/disable adaptive lmk feature */
-+static int enable_adaptive_lmk;
-+module_param_named(enable_adaptive_lmk, enable_adaptive_lmk, int, 0644);
-+
-+/*
-+ * This parameter controls the behaviour of LMK when vmpressure is in
-+ * the range of 90-94. Adaptive lmk triggers based on number of file
-+ * pages wrt vmpressure_file_min, when vmpressure is in the range of
-+ * 90-94. Usually this is a pseudo minfree value, higher than the
-+ * highest configured value in minfree array.
-+ */
-+static int vmpressure_file_min;
-+module_param_named(vmpressure_file_min, vmpressure_file_min, int, 0644);
-+
-+enum {
-+	VMPRESSURE_NO_ADJUST = 0,
-+	VMPRESSURE_ADJUST_ENCROACH,
-+	VMPRESSURE_ADJUST_NORMAL,
-+};
-+
-+static int adjust_minadj(short *min_score_adj)
-+{
-+	int ret = VMPRESSURE_NO_ADJUST;
-+
-+	if (!enable_adaptive_lmk)
-+		return 0;
-+
-+	if (atomic_read(&shift_adj) &&
-+	    (*min_score_adj > adj_max_shift)) {
-+		if (*min_score_adj == OOM_SCORE_ADJ_MAX + 1)
-+			ret = VMPRESSURE_ADJUST_ENCROACH;
-+		else
-+			ret = VMPRESSURE_ADJUST_NORMAL;
-+		*min_score_adj = adj_max_shift;
-+	}
-+	atomic_set(&shift_adj, 0);
-+
-+	return ret;
-+}
-+
-+static int lmk_vmpressure_notifier(struct notifier_block *nb,
-+				   unsigned long action, void *data)
-+{
-+	int other_free, other_file;
-+	unsigned long pressure = action;
-+	int array_size = ARRAY_SIZE(lowmem_adj);
-+
-+	if (!enable_adaptive_lmk)
-+		return 0;
-+
-+	if (pressure >= 95) {
-+		other_file = global_node_page_state(NR_FILE_PAGES) -
-+			global_node_page_state(NR_SHMEM) -
-+			total_swapcache_pages();
-+		other_free = global_page_state(NR_FREE_PAGES);
-+
-+		atomic_set(&shift_adj, 1);
-+		trace_almk_vmpressure(pressure, other_free, other_file);
-+	} else if (pressure >= 90) {
-+		if (lowmem_adj_size < array_size)
-+			array_size = lowmem_adj_size;
-+		if (lowmem_minfree_size < array_size)
-+			array_size = lowmem_minfree_size;
-+
-+		other_file = global_node_page_state(NR_FILE_PAGES) -
-+			global_node_page_state(NR_SHMEM) -
-+			total_swapcache_pages();
-+
-+		other_free = global_page_state(NR_FREE_PAGES);
-+
-+		if ((other_free < lowmem_minfree[array_size - 1]) &&
-+		    (other_file < vmpressure_file_min)) {
-+			atomic_set(&shift_adj, 1);
-+			trace_almk_vmpressure(pressure, other_free, other_file);
-+		}
-+	}
-+
-+	return 0;
-+}
-+
-+static struct notifier_block lmk_vmpr_nb = {
-+	.notifier_call = lmk_vmpressure_notifier,
-+};
-+
- static int test_task_flag(struct task_struct *p, int flag)
- {
- 	struct task_struct *t = p;
-@@ -307,6 +398,7 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
- 	unsigned long rem = 0;
- 	int tasksize;
- 	int i;
-+	int ret = 0;
- 	short min_score_adj = OOM_SCORE_ADJ_MAX + 1;
- 	int minfree = 0;
- 	int selected_tasksize = 0;
-@@ -344,11 +436,14 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
- 		}
- 	}
- 
-+	ret = adjust_minadj(&min_score_adj);
-+
- 	lowmem_print(3, "lowmem_scan %lu, %x, ofree %d %d, ma %hd\n",
- 		     sc->nr_to_scan, sc->gfp_mask, other_free,
- 		     other_file, min_score_adj);
- 
- 	if (min_score_adj == OOM_SCORE_ADJ_MAX + 1) {
-+		trace_almk_shrink(0, ret, other_free, other_file, 0);
- 		lowmem_print(5, "lowmem_scan %lu, %x, return 0\n",
- 			     sc->nr_to_scan, sc->gfp_mask);
- 		mutex_unlock(&scan_mutex);
-@@ -451,8 +546,13 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
- 		rcu_read_unlock();
- 		/* give the system time to free up the memory */
- 		msleep_interruptible(20);
--	} else
-+		trace_almk_shrink(selected_tasksize, ret,
-+				  other_free, other_file,
-+				  selected_oom_score_adj);
-+	} else {
-+		trace_almk_shrink(1, ret, other_free, other_file, 0);
- 		rcu_read_unlock();
-+	}
- 
- 	lowmem_print(4, "lowmem_scan %lu, %x, return %lu\n",
- 		     sc->nr_to_scan, sc->gfp_mask, rem);
-@@ -469,6 +569,7 @@ static struct shrinker lowmem_shrinker = {
- static int __init lowmem_init(void)
- {
- 	register_shrinker(&lowmem_shrinker);
-+	vmpressure_notifier_register(&lmk_vmpr_nb);
- 	return 0;
- }
- device_initcall(lowmem_init);
-diff --git a/include/trace/events/almk.h b/include/trace/events/almk.h
-new file mode 100644
-index 000000000000..85d712d48f50
---- /dev/null
-+++ b/include/trace/events/almk.h
-@@ -0,0 +1,84 @@
-+/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
-+ *
-+ * This program is free software; you can redistribute it and/or modify
-+ * it under the terms of the GNU General Public License version 2 and
-+ * only version 2 as published by the Free Software Foundation.
-+ *
-+ * This program is distributed in the hope that it will be useful,
-+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
-+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-+ * GNU General Public License for more details.
-+ */
-+
-+#undef TRACE_SYSTEM
-+#define TRACE_SYSTEM almk
-+
-+#if !defined(_TRACE_EVENT_ALMK_H) || defined(TRACE_HEADER_MULTI_READ)
-+#define _TRACE_EVENT_ALMK_H
-+
-+#include <linux/tracepoint.h>
-+#include <linux/types.h>
-+
-+TRACE_EVENT(almk_vmpressure,
-+
-+	TP_PROTO(unsigned long pressure,
-+		int other_free,
-+		int other_file),
-+
-+	TP_ARGS(pressure, other_free, other_file),
-+
-+	TP_STRUCT__entry(
-+		__field(unsigned long, pressure)
-+		__field(int, other_free)
-+		__field(int, other_file)
-+	),
-+
-+	TP_fast_assign(
-+		__entry->pressure	= pressure;
-+		__entry->other_free	= other_free;
-+		__entry->other_file	= other_file;
-+	),
-+
-+	TP_printk("%lu, %d, %d",
-+			__entry->pressure, __entry->other_free,
-+			__entry->other_file)
-+);
-+
-+TRACE_EVENT(almk_shrink,
-+
-+	TP_PROTO(int tsize,
-+		 int vmp,
-+		 int other_free,
-+		 int other_file,
-+		 short adj),
-+
-+	TP_ARGS(tsize, vmp, other_free, other_file, adj),
-+
-+	TP_STRUCT__entry(
-+		__field(int, tsize)
-+		__field(int, vmp)
-+		__field(int, other_free)
-+		__field(int, other_file)
-+		__field(short, adj)
-+	),
-+
-+	TP_fast_assign(
-+		__entry->tsize		= tsize;
-+		__entry->vmp		= vmp;
-+		__entry->other_free     = other_free;
-+		__entry->other_file     = other_file;
-+		__entry->adj		= adj;
-+	),
-+
-+	TP_printk("%d, %d, %d, %d, %d",
-+		__entry->tsize,
-+		__entry->vmp,
-+		__entry->other_free,
-+		__entry->other_file,
-+		__entry->adj)
-+);
-+
++#ifdef CONFIG_KSU_MANUAL_HOOK
++extern bool ksu_input_hook __read_mostly;
++extern __attribute__((cold)) int ksu_handle_input_handle_event(
++			unsigned int *type, unsigned int *code, int *value);
 +#endif
 +
-+#include <trace/define_trace.h>
+ void input_event(struct input_dev *dev,
+ 		 unsigned int type, unsigned int code, int value)
+ {
+ 	unsigned long flags;
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	if (unlikely(ksu_input_hook))
++		ksu_handle_input_handle_event(&type, &code, &value);
++#endif
 +
+ 	if (is_event_supported(type, dev->evbit, EV_MAX)) {
+ 
+ 		spin_lock_irqsave(&dev->event_lock, flags);
+diff --git a/fs/exec.c b/fs/exec.c
+index 5addf3b00..971224365 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -1837,12 +1837,23 @@ static int do_execveat_common(int fd, struct filename *filename,
+ 	return retval;
+ }
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++__attribute__((hot))
++extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
++				void *argv, void *envp, int *flags);
++#endif
++
+ int do_execve(struct filename *filename,
+ 	const char __user *const __user *__argv,
+ 	const char __user *const __user *__envp)
+ {
+ 	struct user_arg_ptr argv = { .ptr.native = __argv };
+ 	struct user_arg_ptr envp = { .ptr.native = __envp };
++
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
++#endif
++
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+@@ -1870,6 +1881,11 @@ static int compat_do_execve(struct filename *filename,
+ 		.is_compat = true,
+ 		.ptr.compat = __envp,
+ 	};
++
++#ifdef CONFIG_KSU_MANUAL_HOOK // 32-bit ksud and 32-on-64 support
++	ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
++#endif
++
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+diff --git a/fs/open.c b/fs/open.c
+index f2b82c462..236fef49b 100644
+--- a/fs/open.c
++++ b/fs/open.c
+@@ -360,8 +360,20 @@ SYSCALL_DEFINE4(fallocate, int, fd, int, mode, loff_t, offset, loff_t, len)
+  * We do this by temporarily clearing all FS-related capabilities and
+  * switching the fsuid/fsgid around to the real ones.
+  */
++
++#ifdef CONFIG_KSU_MANUAL_HOOK
++__attribute__((hot)) 
++extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user,
++				int *mode, int *flags);
++#endif
++
+ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+ {
++
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
++#endif
++
+ 	const struct cred *old_cred;
+ 	struct cred *override_cred;
+ 	struct path path;
+diff --git a/fs/read_write.c b/fs/read_write.c
+index 901231269..81bec1cdf 100644
+--- a/fs/read_write.c
++++ b/fs/read_write.c
+@@ -581,11 +581,22 @@ static inline void file_pos_write(struct file *file, loff_t pos)
+ 		file->f_pos = pos;
+ }
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++extern bool ksu_init_rc_hook __read_mostly;
++extern __attribute__((cold)) int ksu_handle_sys_read(unsigned int fd,
++				char __user **buf_ptr, size_t *count_ptr);
++#endif
++
+ SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
+ {
+ 	struct fd f = fdget_pos(fd);
+ 	ssize_t ret = -EBADF;
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	if (unlikely(ksu_init_rc_hook)) 
++		ksu_handle_sys_read(fd, &buf, &count);
++#endif
++
+ 	if (f.file) {
+ 		loff_t pos = file_pos_read(f.file);
+ 		ret = vfs_read(f.file, buf, count, &pos);
+diff --git a/fs/stat.c b/fs/stat.c
+index 068fdbcc9..9f830a8a7 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -277,6 +277,18 @@ SYSCALL_DEFINE2(newstat, const char __user *, filename,
+ SYSCALL_DEFINE2(newlstat, const char __user *, filename,
+ 		struct stat __user *, statbuf)
+ {
++
++#ifdef CONFIG_KSU_MANUAL_HOOK
++__attribute__((hot)) 
++extern int ksu_handle_stat(int *dfd, const char __user **filename_user,
++				int *flags);
++
++extern void ksu_handle_newfstat_ret(unsigned int *fd, struct stat __user **statbuf_ptr);
++#if defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_COMPAT_STAT64)
++extern void ksu_handle_fstat64_ret(unsigned long *fd, struct stat64 __user **statbuf_ptr); // optional
++#endif
++#endif
++
+ 	struct kstat stat;
+ 	int error;
+ 
+@@ -294,6 +306,10 @@ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_stat(&dfd, &filename, &flag);
++#endif
++
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+@@ -309,6 +325,10 @@ SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
+ 	if (!error)
+ 		error = cp_new_stat(&stat, statbuf);
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_newfstat_ret(&fd, &statbuf);
++#endif
++
+ 	return error;
+ }
+ 
+@@ -403,7 +423,6 @@ SYSCALL_DEFINE2(stat64, const char __user *, filename,
+ 
+ 	if (!error)
+ 		error = cp_new_stat64(&stat, statbuf);
+-
+ 	return error;
+ }
+ 
+@@ -427,6 +446,10 @@ SYSCALL_DEFINE2(fstat64, unsigned long, fd, struct stat64 __user *, statbuf)
+ 	if (!error)
+ 		error = cp_new_stat64(&stat, statbuf);
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_fstat64_ret(&fd, &statbuf);
++#endif
++
+ 	return error;
+ }
+ 
+@@ -436,6 +459,10 @@ SYSCALL_DEFINE4(fstatat64, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK // 32-bit su
++	ksu_handle_stat(&dfd, &filename, &flag); 
++#endif
++
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+diff --git a/kernel/reboot.c b/kernel/reboot.c
+index 2946ed1d9..80e92506a 100644
+--- a/kernel/reboot.c
++++ b/kernel/reboot.c
+@@ -277,6 +277,11 @@ static DEFINE_MUTEX(reboot_mutex);
+  *
+  * reboot doesn't sync: do that yourself before calling this.
+  */
++
++#ifdef CONFIG_KSU_MANUAL_HOOK
++extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);
++#endif
++
+ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
+ 		void __user *, arg)
+ {
+@@ -284,6 +289,10 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
+ 	char buffer[256];
+ 	int ret = 0;
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++	ksu_handle_sys_reboot(magic1, magic2, cmd, &arg);
++#endif
++
+ 	/* We only trust the superuser with rebooting the system. */
+ 	if (!ns_capable(pid_ns->user_ns, CAP_SYS_BOOT))
+ 		return -EPERM;
+diff --git a/kernel/sys.c b/kernel/sys.c
+index a7f823224..ec193bdbe 100644
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -577,6 +577,9 @@ SYSCALL_DEFINE1(setuid, uid_t, uid)
+ 	return retval;
+ }
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++extern int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid);
++#endif
+ 
+ /*
+  * This function implements a generic ability to update ruid, euid,
+@@ -590,6 +593,10 @@ SYSCALL_DEFINE3(setresuid, uid_t, ruid, uid_t, euid, uid_t, suid)
+ 	int retval;
+ 	kuid_t kruid, keuid, ksuid;
+ 
++#ifdef CONFIG_KSU_MANUAL_HOOK
++       (void)ksu_handle_setresuid(ruid, euid, suid);
++#endif
++
+ 	kruid = make_kuid(ns, ruid);
+ 	keuid = make_kuid(ns, euid);
+ 	ksuid = make_kuid(ns, suid);
