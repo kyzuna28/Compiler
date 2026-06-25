@@ -66,6 +66,7 @@ on:
         - manager-3.0
         - all-3.1
         - next-3.2
+        - "resukisu"
         - "apatch"
         - "none"
       version_hash:
@@ -193,16 +194,32 @@ jobs:
           enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
           echo "✅ [APATCH] Selesai menerapkan config!"
           
+        elif [ "${{ inputs.kernelsu }}" == "resukisu" ]; then
+          echo "🚀 [RESUKISU] Memulai injeksi ReSukiSU (Mode Standar)..."
+          echo "📥 [RESUKISU] Mengunduh patch 4.9 dari GitHub repo Compiler..."
+          wget -q https://raw.githubusercontent.com/kyzuna28/Compiler/main/4.9.patch
+          patch -p1 < 4.9.patch || true
+          
+          echo "📥 [RESUKISU] Memasang driver ReSukiSU..."
+          curl -LSs https://raw.githubusercontent.com/resukisu/ReSukiSU/main/kernel/setup.sh | bash -s main
+          
+          echo "⚙️ [RESUKISU] Menyesuaikan defconfig..."
+          enable_cfg KSU KSU_MANUAL_HOOK KSU_MANUAL_HOOK_AUTO_SETUID_HOOK KSU_MANUAL_HOOK_AUTO_INITRC_HOOK KSU_MANUAL_HOOK_AUTO_INPUT_HOOK KALLSYMS KALLSYMS_ALL OVERLAY_FS
+          disable_cfg KPROBES HAVE_KPROBES
+          echo "✨ [RESUKISU] Sukses menerapkan kustomisasi ReSukiSU!"
+          
         else
-          echo "🚀 [KSU] Memulai injeksi KernelSU..."
-          echo "📥 [KSU] Mengunduh & menerapkan patch manual hook..."
+          echo "🚀 [KSU] Memulai injeksi KernelSU (Standard)..."
+          echo "📥 [KSU] Mengunduh & menerapkan patch manual hook universal..."
           wget -q https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
           patch -p1 < kernel-4.4_4.9.patch || true
+          
           case "${{ inputs.kernelsu }}" in
             manager-3.0) echo "📥 [KSU] Memasang Manager 3.0..."; curl -s https://raw.githubusercontent.com/ThRE-Team/Next-v3/refs/heads/main/setup.sh | bash ;;
             all-3.1) echo "📥 [KSU] Memasang Next (Main)..."; curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main ;;
             next-3.2) echo "📥 [KSU] Memasang Next v3.2.0..."; curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s v3.2.0 ;;
           esac
+          
           echo "⚙️ [KSU] Menyesuaikan defconfig kernel..."
           enable_cfg KSU KSU_MANUAL_HOOK
           disable_cfg KPROBES HAVE_KPROBES
