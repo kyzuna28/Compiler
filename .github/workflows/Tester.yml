@@ -197,8 +197,8 @@ jobs:
         elif [ "${{ inputs.kernelsu }}" == "resukisu" ]; then
           echo "🚀 [RESUKISU] Memulai injeksi ReSukiSU (Mode Standar)..."
           echo "📥 [RESUKISU] Mengunduh patch 4.9 dari GitHub repo Compiler..."
-          wget -q https://raw.githubusercontent.com/kyzuna28/Compiler/main/4.9.patch
-          patch -p1 < 4.9.patch || true
+          wget -q https://raw.githubusercontent.com/kyzuna28/Compiler/main/resuhooks.patch
+          patch -p1 < resuhooks.patch || true
           
           echo "📥 [RESUKISU] Memasang driver ReSukiSU..."
           curl -LSs https://raw.githubusercontent.com/resukisu/ReSukiSU/main/kernel/setup.sh | bash -s main
