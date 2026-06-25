@@ -216,7 +216,7 @@ jobs:
           patch -p1 < hooksultra.patch || true
           
           echo "📩 [SUKI-ULTRA] Memasang driver SUKI-ULTRA..."
-          curl -LSs https://raw.githubusercontent.com/sidex15/SukiSU-Ultra/nongki/kernel/setup.sh | bash
+          curl -LSs https://raw.githubusercontent.com/kyzuna28/Compiler/main/kernel/setup.sh | bash -s main
           
           echo "⚙️ [SUKI-ULTRA] Menyesuaikan defconfig..."
           enable_cfg KSU KSU_MANUAL_HOOK KSU_MANUAL_HOOK_AUTO_SETUID_HOOK KSU_MANUAL_HOOK_AUTO_INITRC_HOOK KSU_MANUAL_HOOK_AUTO_INPUT_HOOK KALLSYMS KALLSYMS_ALL OVERLAY_FS
