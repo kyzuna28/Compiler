@@ -199,26 +199,32 @@ jobs:
         # ==========================================
         if [ "${{ inputs.kernelsu }}" != "none" ] && [ "${{ inputs.kernelsu }}" != "apatch" ]; then
           
-          echo "🧹 [HOOK] Menjalankan script clean_hook..."
-          # TODO: Masukkan script clean_hook.sh kamu di bawah ini
-          # curl -LSs "https://raw.githubusercontent.com/.../clean_hook.sh" | bash
-          
+          # 1. Pengecekan SuSFS
           if [ "${{ inputs.susfs_enable }}" == "true" ]; then
-            echo "🩹 [SUSFS] Menerapkan patch SuSFS dasar..."
-            # TODO: Masukkan lokasi patch SuSFS kamu di bawah ini
-            # wget -q "https://raw.githubusercontent.com/.../susfs_patch.patch"
-            # patch -p1 < susfs_patch.patch || true
+            echo "🩹 [SUSFS] Menerapkan patch SuSFS & Inline Hook..."
+            
+            # Unduh patch dan script dari repo kamu
+            wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/susfs_patch_to_4.9.patch"
+            wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/susfs_inline_hook_patches.sh"
+            
+            # Terapkan patch
+            patch -p1 < susfs_patch_to_4.9.patch
+            
+            # Jalankan script inline hook (pastikan script ini executable)
+            bash susfs_inline_hook_patches.sh
             
             echo "⚙️ [SUSFS] Menambahkan config SuSFS ke Defconfig..."
             enable_cfg KSU_SUSFS KSU_SUSFS_SUS_PATH KSU_SUSFS_SUS_MOUNT KSU_SUSFS_SUS_KSTAT KSU_SUSFS_SPOOF_UNAME KSU_SUSFS_ENABLE_LOG KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG KSU_SUSFS_OPEN_REDIRECT KSU_SUSFS_SUS_MAP
             if grep -q "THREAD_INFO_IN_TASK" "drivers/kernelsu/Kconfig"; then enable_cfg THREAD_INFO_IN_TASK; fi
-          fi
           
-          # TODO: Jika kamu butuh patch manual hook tambahan untuk kernel lama (non-susfs), taruh di sini:
-          # if [ "${{ inputs.susfs_enable }}" != "true" ]; then
-          #    wget -q "https://raw.githubusercontent.com/.../manual_hook.patch"
-          #    patch -p1 < manual_hook.patch || true
-          # fi
+          else
+            echo "🧹 [HOOK] Menerapkan Syscall Manual Hook (Non-SuSFS)..."
+            # Unduh script syscall hook
+            wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/syscall_hook_patches.sh"
+            
+            # Jalankan script
+            bash syscall_hook_patches.sh
+          fi
         fi
 
         # ==========================================
@@ -409,3 +415,4 @@ jobs:
         path: AnyKernel3/
         compression-level: 9
         if-no-files-found: error
+        
