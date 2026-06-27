@@ -48,15 +48,6 @@ on:
         - no lto
         - full
         - thin
-      rom_optimization:
-        description: 'ROM Specific Tweaks'
-        default: 'no tweak'
-        required: true
-        type: choice
-        options:
-        - AOSP
-        - MIUI
-        - no tweak
       kernelsu:
         description: 'Pilih Root (Fork KSU / APatch)'
         default: 'none'
@@ -78,6 +69,21 @@ on:
         options:
         - "false"
         - "true"
+      custom_tweaks:
+        description: 'Custom Tweaks (patch/ Dir, cth: lz4.patch, api.patch)'
+        default: 'none'
+        required: false
+        type: string
+      custom_hooks_patch:
+        description: 'Custom Hook Patches (Root Dir, cth: hook16.patch)'
+        default: 'none'
+        required: false
+        type: string
+      custom_sh:
+        description: 'Custom .sh Scripts (Root Dir, cth: script.sh)'
+        default: 'none'
+        required: false
+        type: string
       version_hash:
         description: 'Include Version Hash'
         default: 'no hash'
@@ -174,6 +180,7 @@ jobs:
         cd kernel-dir
         export PATH=$HOME/tc/bin:$PATH
         TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
+        REPO_RAW="https://raw.githubusercontent.com/kyzuna28/Compiler/main"
 
         # Clean extraversion
         sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
@@ -191,11 +198,27 @@ jobs:
         enable_cfg() { for cfg in "$@"; do echo "CONFIG_$cfg=y" >> "$TARGET_CONFIG"; done; }
         disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
 
-        # Base Configs
-        enable_cfg SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP OVERLAY_FS
+        # ==========================================
+        # 1. TWEAK PATCHES (Dieksekusi duluan dari patch/)
+        # ==========================================
+        if [[ "${{ inputs.custom_tweaks }}" != "none" && -n "${{ inputs.custom_tweaks }}" ]]; then
+          echo "🛠️ [TWEAKS] Menerapkan Custom Tweaks dari folder patch/..."
+          IFS=',' read -ra TWEAKS <<< "${{ inputs.custom_tweaks }}"
+          for tweak in "${TWEAKS[@]}"; do
+            tweak=$(echo "$tweak" | xargs)
+            echo "⬇️ Mengunduh $tweak..."
+            wget -q "$REPO_RAW/patch/$tweak" -O "$tweak"
+            if [ -f "$tweak" ]; then
+              echo "🩹 Menerapkan patch $tweak..."
+              patch -p1 < "$tweak" || echo "⚠️ Gagal menerapkan $tweak (conflict possible)."
+            else
+              echo "❌ Gagal mengunduh $tweak. Pastikan nama benar!"
+            fi
+          done
+        fi
 
         # ==========================================
-        # ROOT CONFIGURATIONS (Dynamic KSU / APatch)
+        # 2. ROOT CONFIGURATIONS (Dynamic KSU / APatch)
         # ==========================================
         if [ "${{ inputs.kernelsu }}" == "none" ]; then
           echo "🧹 [ROOT] Skip instalasi Root (Kernel bersih)."
@@ -232,69 +255,77 @@ jobs:
               ;;
           esac
 
-          # 1. UNDUH KSU TERLEBIH DAHULU SEBELUM EKSEKUSI PATCH/HOOK
+          # UNDUH KSU TERLEBIH DAHULU SEBELUM EKSEKUSI PATCH/HOOK
           echo "📥 [KSU] Mengunduh & Install $KSU_NAME via setup.sh..."
           curl -sSL "https://raw.githubusercontent.com/${KSU_AUTHOR}/${KSU_NAME}/refs/heads/${KSU_ORIGIN_BRANCH}/kernel/setup.sh" | bash -s "$KSU_BRANCH"
 
-          # 2. EKSEKUSI PATCH SUSFS & HOOK SETELAH FOLDER KSU TERSEDIA
+          # EKSEKUSI PATCH SUSFS & HOOK SETELAH FOLDER KSU TERSEDIA
           if [ "$SUSFS_STATE" == "true" ]; then
             echo "🩹 [SUSFS] Menerapkan patch SuSFS & Inline Hook..."
-            
-            # Unduh patch dan script dari repo kamu
             wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/susfs_patch_to_4.9.patch"
             wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/susfs_inline_hook_patches.sh"
-            
-            # Terapkan patch (Patch butuh KSU sudah terinstall)
             patch -p1 < susfs_patch_to_4.9.patch
-            
-            # Jalankan script inline hook
             bash susfs_inline_hook_patches.sh
             
             echo "⚙️ [SUSFS] Menambahkan config SuSFS ke Defconfig..."
             enable_cfg KSU_SUSFS KSU_SUSFS_SUS_PATH KSU_SUSFS_SUS_MOUNT KSU_SUSFS_SUS_KSTAT KSU_SUSFS_SPOOF_UNAME KSU_SUSFS_ENABLE_LOG KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG KSU_SUSFS_OPEN_REDIRECT KSU_SUSFS_SUS_MAP
             if grep -q "THREAD_INFO_IN_TASK" "drivers/kernelsu/Kconfig"; then enable_cfg THREAD_INFO_IN_TASK; fi
-          
           else
             echo "🧹 [HOOK] Menerapkan Syscall Manual Hook (Non-SuSFS)..."
-            # Unduh script syscall hook
             wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/syscall_hook_patches.sh"
-            
-            # Jalankan script (Script ini bakal nemu KSU karena udah di-download di langkah 1)
             bash syscall_hook_patches.sh
           fi
 
           echo "⚙️ [KSU] Menerapkan Defconfig khusus untuk $KSU_FORK..."
           enable_cfg KSU KALLSYMS KALLSYMS_ALL
           
-          # 3. Konfigurasi spesifik fork dan hook manual di defconfig
           if [[ "$KSU_FORK" == "rsuntk" || "$KSU_FORK" == "next" || "$KSU_FORK" == "resukisu" || "$KSU_FORK" == "sukisu" ]]; then
             if [[ "$SUSFS_STATE" != "true" ]]; then
               enable_cfg KSU_MANUAL_HOOK KSU_MANUAL_HOOK_AUTO_SETUID_HOOK KSU_MANUAL_HOOK_AUTO_INITRC_HOOK KSU_MANUAL_HOOK_AUTO_INPUT_HOOK
             fi
           fi
           
-          if [[ "$KSU_FORK" == "xxksu" ]]; then
-            disable_cfg KSU_KPROBES_KSUD
-          fi
-          
+          if [[ "$KSU_FORK" == "xxksu" ]]; then disable_cfg KSU_KPROBES_KSUD; fi
           disable_cfg KPROBES HAVE_KPROBES
           echo "✨ [KSU] Selesai mengatur Root!"
         fi
-        
+
         # ==========================================
-        # ROM OPTIMIZATIONS & OTHERS
+        # 3. CUSTOM HOOKS (.patch) & SCRIPTS (.sh) (Dieksekusi Bareng Setelah KSU)
         # ==========================================
-        if [ "${{ inputs.rom_optimization }}" == "MIUI" ]; then
-          enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE DEVFREQ_GOV_MSM_ADRENO_TZ ZRAM ZCOMP CRYPTO_ZSTD ZRAM_DEF_COMP_ZSTD SIMPLE_LMK IOSCHED_MAPLE DEFAULT_MAPLE F2FS_FS EXFAT_FS BOEFFLA_WL_BLOCKER STATE_NOTIFIER POWER_SUSPEND POWER_SUSPEND_STATE NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
-        elif [ "${{ inputs.rom_optimization }}" == "AOSP" ]; then
-          enable_cfg KCAL_EQ SOUND_CONTROL USB_FASTCHARGE INPUT_TOUCHSCREEN DEVFREQ_GOV_MSM_ADRENO_TZ IOSCHED_ZEN DEFAULT_ZEN F2FS_FS EXFAT_FS SIMPLE_LMK TCP_CONG_BBR DEFAULT_BBR NET_SCH_FQ NETFILTER_XT_TARGET_HL NETFILTER_XT_MATCH_HL
-          echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> "$TARGET_CONFIG"
+        if [[ "${{ inputs.custom_hooks_patch }}" != "none" && -n "${{ inputs.custom_hooks_patch }}" ]]; then
+          echo "🪝 [HOOKS] Menerapkan Custom Hook Patches dari Root Repo..."
+          IFS=',' read -ra HOOKS <<< "${{ inputs.custom_hooks_patch }}"
+          for hook in "${HOOKS[@]}"; do
+            hook=$(echo "$hook" | xargs)
+            echo "⬇️ Mengunduh $hook..."
+            wget -q "$REPO_RAW/$hook" -O "$hook"
+            if [ -f "$hook" ]; then
+              echo "🩹 Menerapkan patch $hook..."
+              patch -p1 < "$hook" || echo "⚠️ Gagal menerapkan $hook (conflict possible)."
+            else
+              echo "❌ Gagal mengunduh $hook. Pastikan nama benar!"
+            fi
+          done
         fi
 
-        # Debug Disabling
-        disable_cfg DEBUG_INFO DEBUG_KERNEL PROVE_LOCKING BUG COREDUMP ELF_CORE SLUB_DEBUG MSM_KGSL_BATT_STATS MI_LOG_PRINT MSM_SMD_DEBUG
-        enable_cfg DEBUG_INFO_NONE BUILD_ARM64_DT_BINARIES DTB_COMPRESSION
-
+        if [[ "${{ inputs.custom_sh }}" != "none" && -n "${{ inputs.custom_sh }}" ]]; then
+          echo "📜 [SCRIPTS] Mengeksekusi Custom Shell Scripts dari Root Repo..."
+          IFS=',' read -ra SCRIPTS <<< "${{ inputs.custom_sh }}"
+          for script in "${SCRIPTS[@]}"; do
+            script=$(echo "$script" | xargs)
+            echo "⬇️ Mengunduh $script..."
+            wget -q "$REPO_RAW/$script" -O "$script"
+            if [ -f "$script" ]; then
+              echo "🚀 Menjalankan script $script..."
+              chmod +x "$script"
+              bash "$script" || echo "⚠️ Terjadi error saat menjalankan $script."
+            else
+              echo "❌ Gagal mengunduh $script. Pastikan nama benar!"
+            fi
+          done
+        fi
+        
         # LTO Configuration
         disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
         case "${{ inputs.lto_mode }}" in
@@ -410,4 +441,3 @@ jobs:
         path: AnyKernel3/
         compression-level: 9
         if-no-files-found: error
-        
