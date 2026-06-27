@@ -1,0 +1,1289 @@
+diff --git a/drivers/android/Kconfig b/drivers/android/Kconfig
+index bb2a5b5..67edcdc 100644
+--- a/drivers/android/Kconfig
++++ b/drivers/android/Kconfig
+@@ -54,6 +54,39 @@ config ANDROID_BINDER_IPC_SELFTEST
+ 	  exhaustively with combinations of various buffer sizes and
+ 	  alignments.
+ 
++config ANDROID_SIMPLE_LMK
++	bool "Simple Android Low Memory Killer"
++	depends on !ANDROID_LOW_MEMORY_KILLER && !MEMCG && !PSI
++	---help---
++	  This is a complete low memory killer solution for Android that is
++	  small and simple. Processes are killed according to the priorities
++	  that Android gives them, so that the least important processes are
++	  always killed first. Processes are killed until memory deficits are
++	  satisfied, as observed from direct reclaim and kswapd reclaim
++	  struggling to free up pages, via VM pressure notifications.
++
++if ANDROID_SIMPLE_LMK
++
++config ANDROID_SIMPLE_LMK_MINFREE
++	int "Minimum MiB of memory to free per reclaim"
++	range 8 512
++	default 128
++	help
++	  Simple LMK will try to free at least this much memory per reclaim.
++
++config ANDROID_SIMPLE_LMK_TIMEOUT_MSEC
++	int "Reclaim timeout in milliseconds"
++	range 50 1000
++	default 200
++	help
++	  Simple LMK tries to wait until all of the victims it kills have their
++	  memory freed; however, sometimes victims can take a while to die,
++	  which can block Simple LMK from killing more processes in time when
++	  needed. After the specified timeout elapses, Simple LMK will stop
++	  waiting and make itself available to kill more processes.
++
++endif
++
+ endif # if ANDROID
+ 
+ endmenu
+diff --git a/drivers/android/Makefile b/drivers/android/Makefile
+index a01254c..81cc796 100644
+--- a/drivers/android/Makefile
++++ b/drivers/android/Makefile
+@@ -2,3 +2,4 @@ ccflags-y += -I$(src)			# needed for trace events
+ 
+ obj-$(CONFIG_ANDROID_BINDER_IPC)	+= binder.o binder_alloc.o
+ obj-$(CONFIG_ANDROID_BINDER_IPC_SELFTEST) += binder_alloc_selftest.o
++obj-$(CONFIG_ANDROID_SIMPLE_LMK)	+= simple_lmk.o
+diff --git a/drivers/android/simple_lmk.c b/drivers/android/simple_lmk.c
+new file mode 100644
+index 0000000..61335ea
+--- /dev/null
++++ b/drivers/android/simple_lmk.c
+@@ -0,0 +1,358 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2019-2023 Sultan Alsawaf <sultan@kerneltoast.com>.
++ */
++
++#define pr_fmt(fmt) "simple_lmk: " fmt
++
++#include <linux/freezer.h>
++#include <linux/kthread.h>
++#include <linux/mm.h>
++#include <linux/moduleparam.h>
++#include <linux/oom.h>
++#include <linux/ratelimit.h>
++#include <linux/sort.h>
++#include <linux/vmpressure.h>
++
++/* The minimum number of pages to free per reclaim */
++#define MIN_FREE_PAGES (CONFIG_ANDROID_SIMPLE_LMK_MINFREE * SZ_1M / PAGE_SIZE)
++
++/* Kill up to this many victims per reclaim */
++#define MAX_VICTIMS 1024
++
++/* Timeout in jiffies for each reclaim */
++#define RECLAIM_EXPIRES msecs_to_jiffies(CONFIG_ANDROID_SIMPLE_LMK_TIMEOUT_MSEC)
++
++struct victim_info {
++	struct task_struct *tsk;
++	struct mm_struct *mm;
++	unsigned long size;
++};
++
++static struct victim_info victims[MAX_VICTIMS] __cacheline_aligned_in_smp;
++static struct task_struct *task_bucket[SHRT_MAX + 1] __cacheline_aligned;
++static DECLARE_WAIT_QUEUE_HEAD(oom_waitq);
++static DECLARE_COMPLETION(reclaim_done);
++static __cacheline_aligned_in_smp DEFINE_RWLOCK(mm_free_lock);
++static int nr_victims;
++static atomic_t needs_reclaim = ATOMIC_INIT(0);
++static atomic_t nr_killed = ATOMIC_INIT(0);
++
++static int victim_cmp(const void *lhs_ptr, const void *rhs_ptr)
++{
++	const struct victim_info *lhs = (typeof(lhs))lhs_ptr;
++	const struct victim_info *rhs = (typeof(rhs))rhs_ptr;
++
++	return rhs->size - lhs->size;
++}
++
++static void victim_swap(void *lhs_ptr, void *rhs_ptr, int size)
++{
++	struct victim_info *lhs = (typeof(lhs))lhs_ptr;
++	struct victim_info *rhs = (typeof(rhs))rhs_ptr;
++
++	swap(*lhs, *rhs);
++}
++
++static unsigned long get_total_mm_pages(struct mm_struct *mm)
++{
++	unsigned long pages = 0;
++	int i;
++
++	for (i = 0; i < NR_MM_COUNTERS; i++)
++		pages += get_mm_counter(mm, i);
++
++	return pages;
++}
++
++static unsigned long find_victims(int *vindex)
++{
++	short i, min_adj = SHRT_MAX, max_adj = 0;
++	unsigned long pages_found = 0;
++	struct task_struct *tsk;
++
++	rcu_read_lock();
++	for_each_process(tsk) {
++		struct signal_struct *sig;
++		short adj;
++
++		/*
++		 * Search for suitable tasks with a positive adj (importance).
++		 * Since only tasks with a positive adj can be targeted, that
++		 * naturally excludes tasks which shouldn't be killed, like init
++		 * and kthreads. Although oom_score_adj can still be changed
++		 * while this code runs, it doesn't really matter; we just need
++		 * a snapshot of the task's adj.
++		 */
++		sig = tsk->signal;
++		adj = READ_ONCE(sig->oom_score_adj);
++		if (adj < 0 ||
++		    sig->flags & (SIGNAL_GROUP_EXIT | SIGNAL_GROUP_COREDUMP) ||
++		    (thread_group_empty(tsk) && tsk->flags & PF_EXITING))
++			continue;
++
++		/* Store the task in a linked-list bucket based on its adj */
++		tsk->simple_lmk_next = task_bucket[adj];
++		task_bucket[adj] = tsk;
++
++		/* Track the min and max adjs to speed up the loop below */
++		if (adj > max_adj)
++			max_adj = adj;
++		if (adj < min_adj)
++			min_adj = adj;
++	}
++
++	/* Start searching for victims from the highest adj (least important) */
++	for (i = max_adj; i >= min_adj; i--) {
++		int old_vindex;
++
++		tsk = task_bucket[i];
++		if (!tsk)
++			continue;
++
++		/* Clear out this bucket for the next time reclaim is done */
++		task_bucket[i] = NULL;
++
++		/* Iterate through every task with this adj */
++		old_vindex = *vindex;
++		do {
++			struct task_struct *vtsk;
++
++			vtsk = find_lock_task_mm(tsk);
++			if (!vtsk)
++				continue;
++
++			/* Store this potential victim away for later */
++			victims[*vindex].tsk = vtsk;
++			victims[*vindex].mm = vtsk->mm;
++			victims[*vindex].size = get_total_mm_pages(vtsk->mm);
++
++			/* Count the number of pages that have been found */
++			pages_found += victims[*vindex].size;
++
++			/* Make sure there's space left in the victim array */
++			if (++*vindex == MAX_VICTIMS)
++				break;
++		} while ((tsk = tsk->simple_lmk_next));
++
++		/* Go to the next bucket if nothing was found */
++		if (*vindex == old_vindex)
++			continue;
++
++		/*
++		 * Sort the victims in descending order of size to prioritize
++		 * killing the larger ones first.
++		 */
++		sort(&victims[old_vindex], *vindex - old_vindex,
++		     sizeof(*victims), victim_cmp, victim_swap);
++
++		/* Stop when we are out of space or have enough pages found */
++		if (*vindex == MAX_VICTIMS || pages_found >= MIN_FREE_PAGES) {
++			/* Zero out any remaining buckets we didn't touch */
++			if (i > min_adj)
++				memset(&task_bucket[min_adj], 0,
++				       (i - min_adj) * sizeof(*task_bucket));
++			break;
++		}
++	}
++	rcu_read_unlock();
++
++	return pages_found;
++}
++
++static int process_victims(int vlen)
++{
++	unsigned long pages_found = 0;
++	int i, nr_to_kill = 0;
++
++	/*
++	 * Calculate the number of tasks that need to be killed and quickly
++	 * release the references to those that'll live.
++	 */
++	for (i = 0; i < vlen; i++) {
++		struct victim_info *victim = &victims[i];
++		struct task_struct *vtsk = victim->tsk;
++
++		/* The victim's mm lock is taken in find_victims; release it */
++		if (pages_found >= MIN_FREE_PAGES) {
++			task_unlock(vtsk);
++		} else {
++			pages_found += victim->size;
++			nr_to_kill++;
++		}
++	}
++
++	return nr_to_kill;
++}
++
++static void scan_and_kill(void)
++{
++	int i, nr_to_kill, nr_found = 0;
++	unsigned long pages_found;
++
++	/* Populate the victims array with tasks sorted by adj and then size */
++	pages_found = find_victims(&nr_found);
++	if (unlikely(!nr_found)) {
++		pr_err_ratelimited("No processes available to kill!\n");
++		return;
++	}
++
++	/* Minimize the number of victims if we found more pages than needed */
++	if (pages_found > MIN_FREE_PAGES) {
++		/* First round of processing to weed out unneeded victims */
++		nr_to_kill = process_victims(nr_found);
++
++		/*
++		 * Try to kill as few of the chosen victims as possible by
++		 * sorting the chosen victims by size, which means larger
++		 * victims that have a lower adj can be killed in place of
++		 * smaller victims with a high adj.
++		 */
++		sort(victims, nr_to_kill, sizeof(*victims), victim_cmp,
++		     victim_swap);
++
++		/* Second round of processing to finally select the victims */
++		nr_to_kill = process_victims(nr_to_kill);
++	} else {
++		/* Too few pages found, so all the victims need to be killed */
++		nr_to_kill = nr_found;
++	}
++
++	/* Store the final number of victims for simple_lmk_mm_freed() */
++	write_lock(&mm_free_lock);
++	nr_victims = nr_to_kill;
++	write_unlock(&mm_free_lock);
++
++	/* Kill the victims */
++	for (i = 0; i < nr_to_kill; i++) {
++		static const struct sched_param min_rt_prio = {
++			.sched_priority = 1
++		};
++		struct victim_info *victim = &victims[i];
++		struct task_struct *t, *vtsk = victim->tsk;
++
++		pr_info("Killing %s with adj %d to free %lu KiB\n", vtsk->comm,
++			vtsk->signal->oom_score_adj,
++			victim->size << (PAGE_SHIFT - 10));
++
++		/* Accelerate the victim's death by forcing the kill signal */
++		do_send_sig_info(SIGKILL, SEND_SIG_FORCED, vtsk, true);
++
++		/*
++		 * Mark the thread group dead so that other kernel code knows,
++		 * and then elevate the thread group to SCHED_RR with minimum RT
++		 * priority. The entire group needs to be elevated because
++		 * there's no telling which threads have references to the mm as
++		 * well as which thread will happen to put the final reference
++		 * and release the mm's memory. If the mm is released from a
++		 * thread with low scheduling priority then it may take a very
++		 * long time for exit_mmap() to complete.
++		 */
++		rcu_read_lock();
++		for_each_thread(vtsk, t)
++			set_tsk_thread_flag(t, TIF_MEMDIE);
++		for_each_thread(vtsk, t)
++			sched_setscheduler_nocheck(t, SCHED_RR, &min_rt_prio);
++		rcu_read_unlock();
++
++		/* Allow the victim to run on any CPU. This won't schedule. */
++		set_cpus_allowed_ptr(vtsk, cpu_all_mask);
++
++		/* Signals can't wake frozen tasks; only a thaw operation can */
++		__thaw_task(vtsk);
++
++		/* Finally release the victim's task lock acquired earlier */
++		task_unlock(vtsk);
++	}
++
++	/* Wait until all the victims die or until the timeout is reached */
++	if (!wait_for_completion_timeout(&reclaim_done, RECLAIM_EXPIRES))
++		pr_info("Timeout hit waiting for victims to die, proceeding\n");
++
++	/* Clean up for future reclaim invocations */
++	write_lock(&mm_free_lock);
++	reinit_completion(&reclaim_done);
++	nr_victims = 0;
++	nr_killed = (atomic_t)ATOMIC_INIT(0);
++	write_unlock(&mm_free_lock);
++}
++
++static int simple_lmk_reclaim_thread(void *data)
++{
++	static const struct sched_param sched_max_rt_prio = {
++		.sched_priority = MAX_RT_PRIO - 1
++	};
++
++	sched_setscheduler_nocheck(current, SCHED_FIFO, &sched_max_rt_prio);
++	set_freezable();
++
++	while (1) {
++		wait_event_freezable(oom_waitq, atomic_read(&needs_reclaim));
++		scan_and_kill();
++		atomic_set(&needs_reclaim, 0);
++	}
++
++	return 0;
++}
++
++void simple_lmk_mm_freed(struct mm_struct *mm)
++{
++	int i;
++
++	/* Nothing to do when reclaim is starting or ending */
++	if (!read_trylock(&mm_free_lock))
++		return;
++
++	for (i = 0; i < nr_victims; i++) {
++		if (victims[i].mm == mm) {
++			victims[i].mm = NULL;
++			if (atomic_inc_return_relaxed(&nr_killed) == nr_victims)
++				complete(&reclaim_done);
++			break;
++		}
++	}
++	read_unlock(&mm_free_lock);
++}
++
++static int simple_lmk_vmpressure_cb(struct notifier_block *nb,
++				    unsigned long pressure, void *data)
++{
++	if (pressure == 100) {
++		atomic_set(&needs_reclaim, 1);
++		smp_mb__after_atomic();
++		if (waitqueue_active(&oom_waitq))
++			wake_up(&oom_waitq);
++	}
++
++	return NOTIFY_OK;
++}
++
++static struct notifier_block vmpressure_notif = {
++	.notifier_call = simple_lmk_vmpressure_cb,
++	.priority = INT_MAX
++};
++
++/* Initialize Simple LMK when lmkd in Android writes to the minfree parameter */
++static int simple_lmk_init_set(const char *val, const struct kernel_param *kp)
++{
++	static atomic_t init_done = ATOMIC_INIT(0);
++	struct task_struct *thread;
++
++	if (!atomic_cmpxchg(&init_done, 0, 1)) {
++		thread = kthread_run(simple_lmk_reclaim_thread, NULL,
++				     "simple_lmkd");
++		BUG_ON(IS_ERR(thread));
++		BUG_ON(vmpressure_notifier_register(&vmpressure_notif));
++	}
++
++	return 0;
++}
++
++static const struct kernel_param_ops simple_lmk_init_ops = {
++	.set = simple_lmk_init_set
++};
++
++/* Needed to prevent Android from thinking there's no LMK and thus rebooting */
++#undef MODULE_PARAM_PREFIX
++#define MODULE_PARAM_PREFIX "lowmemorykiller."
++module_param_cb(minfree, &simple_lmk_init_ops, NULL, 0200);
+diff --git a/drivers/md/bitmap.c b/drivers/md/bitmap.c
+index 863fe19..6324c0c 100644
+--- a/drivers/md/bitmap.c
++++ b/drivers/md/bitmap.c
+@@ -364,7 +364,7 @@ static int read_page(struct file *file, unsigned long index,
+ 	pr_debug("read bitmap file (%dB @ %llu)\n", (int)PAGE_SIZE,
+ 		 (unsigned long long)index << PAGE_SHIFT);
+ 
+-	bh = alloc_page_buffers(page, 1<<inode->i_blkbits, 0);
++	bh = alloc_page_buffers(page, 1<<inode->i_blkbits, false);
+ 	if (!bh) {
+ 		ret = -ENOMEM;
+ 		goto out;
+diff --git a/fs/buffer.c b/fs/buffer.c
+index 83016fe..7d5f6de 100644
+--- a/fs/buffer.c
++++ b/fs/buffer.c
+@@ -252,27 +252,6 @@ out:
+ 	return ret;
+ }
+ 
+-/*
+- * Kick the writeback threads then try to free up some ZONE_NORMAL memory.
+- */
+-static void free_more_memory(void)
+-{
+-	struct zoneref *z;
+-	int nid;
+-
+-	wakeup_flusher_threads(1024, WB_REASON_FREE_MORE_MEM);
+-	yield();
+-
+-	for_each_online_node(nid) {
+-
+-		z = first_zones_zonelist(node_zonelist(nid, GFP_NOFS),
+-						gfp_zone(GFP_NOFS), NULL);
+-		if (z->zone)
+-			try_to_free_pages(node_zonelist(nid, GFP_NOFS), 0,
+-						GFP_NOFS, NULL);
+-	}
+-}
+-
+ /*
+  * I/O completion handler for block_read_full_page() - pages
+  * which come unlocked at the end of I/O.
+@@ -864,16 +843,19 @@ int remove_inode_buffers(struct inode *inode)
+  * which may not fail from ordinary buffer allocations.
+  */
+ struct buffer_head *alloc_page_buffers(struct page *page, unsigned long size,
+-		int retry)
++		bool retry)
+ {
+ 	struct buffer_head *bh, *head;
++	gfp_t gfp = GFP_NOFS;
+ 	long offset;
+ 
+-try_again:
++	if (retry)
++		gfp |= __GFP_NOFAIL;
++
+ 	head = NULL;
+ 	offset = PAGE_SIZE;
+ 	while ((offset -= size) >= 0) {
+-		bh = alloc_buffer_head(GFP_NOFS);
++		bh = alloc_buffer_head(gfp);
+ 		if (!bh)
+ 			goto no_grow;
+ 
+@@ -899,23 +881,7 @@ no_grow:
+ 		} while (head);
+ 	}
+ 
+-	/*
+-	 * Return failure for non-async IO requests.  Async IO requests
+-	 * are not allowed to fail, so we have to wait until buffer heads
+-	 * become available.  But we don't want tasks sleeping with 
+-	 * partially complete buffers, so all were released above.
+-	 */
+-	if (!retry)
+-		return NULL;
+-
+-	/* We're _really_ low on memory. Now we just
+-	 * wait for old buffer heads to become free due to
+-	 * finishing IO.  Since this is an async request and
+-	 * the reserve list is empty, we're sure there are 
+-	 * async buffer heads in use.
+-	 */
+-	free_more_memory();
+-	goto try_again;
++	return NULL;
+ }
+ EXPORT_SYMBOL_GPL(alloc_page_buffers);
+ 
+@@ -1004,8 +970,6 @@ grow_dev_page(struct block_device *bdev, sector_t block,
+ 	gfp_mask |= __GFP_NOFAIL;
+ 
+ 	page = find_or_create_page(inode->i_mapping, index, gfp_mask);
+-	if (!page)
+-		return ret;
+ 
+ 	BUG_ON(!PageLocked(page));
+ 
+@@ -1024,9 +988,7 @@ grow_dev_page(struct block_device *bdev, sector_t block,
+ 	/*
+ 	 * Allocate some buffers for this page
+ 	 */
+-	bh = alloc_page_buffers(page, size, 0);
+-	if (!bh)
+-		goto failed;
++	bh = alloc_page_buffers(page, size, true);
+ 
+ 	/*
+ 	 * Link the page to the buffers and initialise them.  Take the
+@@ -1106,8 +1068,6 @@ __getblk_slow(struct block_device *bdev, sector_t block,
+ 		ret = grow_buffers(bdev, block, size, gfp);
+ 		if (ret < 0)
+ 			return NULL;
+-		if (ret == 0)
+-			free_more_memory();
+ 	}
+ }
+ 
+@@ -1616,7 +1576,7 @@ void create_empty_buffers(struct page *page,
+ {
+ 	struct buffer_head *bh, *head, *tail;
+ 
+-	head = alloc_page_buffers(page, blocksize, 1);
++	head = alloc_page_buffers(page, blocksize, true);
+ 	bh = head;
+ 	do {
+ 		bh->b_state |= b_state;
+@@ -2640,7 +2600,7 @@ int nobh_write_begin(struct address_space *mapping,
+ 	 * Be careful: the buffer linked list is a NULL terminated one, rather
+ 	 * than the circular one we're used to.
+ 	 */
+-	head = alloc_page_buffers(page, blocksize, 0);
++	head = alloc_page_buffers(page, blocksize, false);
+ 	if (!head) {
+ 		ret = -ENOMEM;
+ 		goto out_release;
+diff --git a/fs/ntfs/aops.c b/fs/ntfs/aops.c
+index fe251f1..6344775 100644
+--- a/fs/ntfs/aops.c
++++ b/fs/ntfs/aops.c
+@@ -1738,7 +1738,7 @@ void mark_ntfs_record_dirty(struct page *page, const unsigned int ofs) {
+ 	spin_lock(&mapping->private_lock);
+ 	if (unlikely(!page_has_buffers(page))) {
+ 		spin_unlock(&mapping->private_lock);
+-		bh = head = alloc_page_buffers(page, bh_size, 1);
++		bh = head = alloc_page_buffers(page, bh_size, true);
+ 		spin_lock(&mapping->private_lock);
+ 		if (likely(!page_has_buffers(page))) {
+ 			struct buffer_head *tail;
+diff --git a/fs/ntfs/mft.c b/fs/ntfs/mft.c
+index d3c0096..54b9b78 100644
+--- a/fs/ntfs/mft.c
++++ b/fs/ntfs/mft.c
+@@ -506,7 +506,7 @@ int ntfs_sync_mft_mirror(ntfs_volume *vol, const unsigned long mft_no,
+ 	if (unlikely(!page_has_buffers(page))) {
+ 		struct buffer_head *tail;
+ 
+-		bh = head = alloc_page_buffers(page, blocksize, 1);
++		bh = head = alloc_page_buffers(page, blocksize, true);
+ 		do {
+ 			set_buffer_uptodate(bh);
+ 			tail = bh;
+diff --git a/include/linux/buffer_head.h b/include/linux/buffer_head.h
+index 110cfe6..d5d07f0 100644
+--- a/include/linux/buffer_head.h
++++ b/include/linux/buffer_head.h
+@@ -189,7 +189,7 @@ void set_bh_page(struct buffer_head *bh,
+ 		struct page *page, unsigned long offset);
+ int try_to_free_buffers(struct page *);
+ struct buffer_head *alloc_page_buffers(struct page *page, unsigned long size,
+-		int retry);
++		bool retry);
+ void create_empty_buffers(struct page *, unsigned long,
+ 			unsigned long b_state);
+ void end_buffer_read_sync(struct buffer_head *bh, int uptodate);
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index c6875c6..242eaf2 100755
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -2201,6 +2201,9 @@ struct task_struct {
+ 	/* A live task holds one reference. */
+ 	atomic_t stack_refcount;
+ #endif
++#ifdef CONFIG_ANDROID_SIMPLE_LMK
++	struct task_struct		*simple_lmk_next;
++#endif
+ /* CPU-specific state of this task */
+ 	struct thread_struct thread;
+ /*
+diff --git a/include/linux/simple_lmk.h b/include/linux/simple_lmk.h
+new file mode 100644
+index 0000000..b02d1be
+--- /dev/null
++++ b/include/linux/simple_lmk.h
+@@ -0,0 +1,18 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (C) 2019-2020 Sultan Alsawaf <sultan@kerneltoast.com>.
++ */
++#ifndef _SIMPLE_LMK_H_
++#define _SIMPLE_LMK_H_
++
++struct mm_struct;
++
++#ifdef CONFIG_ANDROID_SIMPLE_LMK
++void simple_lmk_mm_freed(struct mm_struct *mm);
++#else
++static inline void simple_lmk_mm_freed(struct mm_struct *mm)
++{
++}
++#endif
++
++#endif /* _SIMPLE_LMK_H_ */
+diff --git a/include/linux/vmpressure.h b/include/linux/vmpressure.h
+index 93000f5..167c221 100644
+--- a/include/linux/vmpressure.h
++++ b/include/linux/vmpressure.h
+@@ -25,6 +25,9 @@ struct vmpressure {
+ 	struct mutex events_lock;
+ 
+ 	struct work_struct work;
++
++	atomic_long_t users;
++	rwlock_t users_lock;
+ };
+ 
+ struct mem_cgroup;
+@@ -32,8 +35,12 @@ struct mem_cgroup;
+ extern int vmpressure_notifier_register(struct notifier_block *nb);
+ extern int vmpressure_notifier_unregister(struct notifier_block *nb);
+ extern void vmpressure(gfp_t gfp, struct mem_cgroup *memcg, bool tree,
+-		       unsigned long scanned, unsigned long reclaimed);
+-extern void vmpressure_prio(gfp_t gfp, struct mem_cgroup *memcg, int prio);
++		       unsigned long scanned, unsigned long reclaimed,
++		       int order);
++extern void vmpressure_prio(gfp_t gfp, struct mem_cgroup *memcg, int prio,
++			    int order);
++extern bool vmpressure_inc_users(int order);
++extern void vmpressure_dec_users(void);
+ 
+ #ifdef CONFIG_MEMCG
+ extern void vmpressure_init(struct vmpressure *vmpr);
+diff --git a/kernel/exit.c b/kernel/exit.c
+index 09beccf..13fd9e7 100644
+--- a/kernel/exit.c
++++ b/kernel/exit.c
+@@ -464,7 +464,6 @@ static void exit_mm(struct task_struct *tsk)
+ {
+ 	struct mm_struct *mm = tsk->mm;
+ 	struct core_state *core_state;
+-	int mm_released;
+ 
+ 	exit_mm_release(tsk, mm);
+ 	if (!mm)
+@@ -514,12 +513,13 @@ static void exit_mm(struct task_struct *tsk)
+ 	enter_lazy_tlb(mm, current);
+ 	task_unlock(tsk);
+ 	mm_update_next_owner(mm);
+-
+-	mm_released = mmput(mm);
++	mmput(mm);
++#ifdef CONFIG_ANDROID_SIMPLE_LMK
++	clear_thread_flag(TIF_MEMDIE);
++#else
+ 	if (test_thread_flag(TIF_MEMDIE))
+ 		exit_oom_victim();
+-	if (mm_released)
+-		set_tsk_thread_flag(tsk, TIF_MM_RELEASED);
++#endif
+ }
+ 
+ static struct task_struct *find_alive_thread(struct task_struct *p)
+diff --git a/kernel/fork.c b/kernel/fork.c
+index 8f7ab49..0ebfde7 100644
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -80,6 +80,7 @@
+ #include <linux/sysctl.h>
+ #include <linux/kcov.h>
+ #include <linux/cpufreq_times.h>
++#include <linux/simple_lmk.h>
+ 
+ #include <asm/pgtable.h>
+ #include <asm/pgalloc.h>
+@@ -888,6 +889,7 @@ static inline void __mmput(struct mm_struct *mm)
+ 	ksm_exit(mm);
+ 	khugepaged_exit(mm); /* must run before exit_mmap */
+ 	exit_mmap(mm);
++	simple_lmk_mm_freed(mm);
+ 	mm_put_huge_zero_page(mm);
+ 	set_mm_exe_file(mm, NULL);
+ 	if (!list_empty(&mm->mmlist)) {
+@@ -897,6 +899,7 @@ static inline void __mmput(struct mm_struct *mm)
+ 	}
+ 	if (mm->binfmt)
+ 		module_put(mm->binfmt->module);
++	set_bit(MMF_OOM_SKIP, &mm->flags);
+ 	mmdrop(mm);
+ }
+ 
+diff --git a/mm/internal.h b/mm/internal.h
+index 38365e7..bdc418b 100644
+--- a/mm/internal.h
++++ b/mm/internal.h
+@@ -187,6 +187,7 @@ extern void prep_compound_page(struct page *page, unsigned int order);
+ extern void post_alloc_hook(struct page *page, unsigned int order,
+ 					gfp_t gfp_flags);
+ extern int user_min_free_kbytes;
++extern atomic_long_t kswapd_waiters;
+ 
+ #if defined CONFIG_COMPACTION || defined CONFIG_CMA
+ 
+diff --git a/mm/oom_kill.c b/mm/oom_kill.c
+index 13ea72c..08873c1 100755
+--- a/mm/oom_kill.c
++++ b/mm/oom_kill.c
+@@ -1017,6 +1017,10 @@ bool out_of_memory(struct oom_control *oc)
+ 	unsigned long freed = 0;
+ 	enum oom_constraint constraint = CONSTRAINT_NONE;
+ 
++	/* Return true since Simple LMK automatically kills in the background */
++	if (IS_ENABLED(CONFIG_ANDROID_SIMPLE_LMK))
++		return true;
++
+ 	if (oom_killer_disabled)
+ 		return false;
+ 
+diff --git a/mm/page_alloc.c b/mm/page_alloc.c
+index 2bcc853..70d4f35 100755
+--- a/mm/page_alloc.c
++++ b/mm/page_alloc.c
+@@ -73,6 +73,8 @@
+ #include <asm/div64.h>
+ #include "internal.h"
+ 
++atomic_long_t kswapd_waiters = ATOMIC_LONG_INIT(0);
++
+ /* prevent >1 _updater_ of zone percpu pageset ->high and ->batch fields */
+ static DEFINE_MUTEX(pcp_batch_high_lock);
+ #define MIN_PERCPU_PAGELIST_FRACTION	(8)
+@@ -3690,6 +3692,8 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+ 	int compaction_retries;
+ 	int no_progress_loops;
+ 	unsigned int cpuset_mems_cookie;
++	bool woke_kswapd = false;
++	bool used_vmpressure = false;
+ 
+ 	/*
+ 	 * In the slowpath, we sanity check order to avoid ever trying to
+@@ -3734,8 +3738,15 @@ retry_cpuset:
+ 	 */
+ 	alloc_flags = gfp_to_alloc_flags(gfp_mask);
+ 
+-	if (gfp_mask & __GFP_KSWAPD_RECLAIM)
++	if (gfp_mask & __GFP_KSWAPD_RECLAIM) {
++		if (!woke_kswapd) {
++			atomic_long_inc(&kswapd_waiters);
++			woke_kswapd = true;
++		}
++		if (!used_vmpressure)
++			used_vmpressure = vmpressure_inc_users(order);
+ 		wake_all_kswapds(order, ac);
++	}
+ 
+ 	/*
+ 	 * The adjusted alloc_flags might result in immediate success, so try
+@@ -3834,11 +3845,15 @@ retry:
+ 	}
+ 
+ 	/* Avoid allocations with no watermarks from looping endlessly */
+-	if (test_thread_flag(TIF_MEMDIE) && !(gfp_mask & __GFP_NOFAIL))
++	if (test_thread_flag(TIF_MEMDIE) && !(gfp_mask & __GFP_NOFAIL)) {
++		gfp_mask |= __GFP_NOWARN;
+ 		goto nopage;
++	}
+ 
+ 
+ 	/* Try direct reclaim and then allocating */
++	if (!used_vmpressure)
++		used_vmpressure = vmpressure_inc_users(order);
+ 	page = __alloc_pages_direct_reclaim(gfp_mask, order, alloc_flags, ac,
+ 							&did_some_progress);
+ 	if (page)
+@@ -3907,9 +3922,14 @@ nopage:
+ 	if (read_mems_allowed_retry(cpuset_mems_cookie))
+ 		goto retry_cpuset;
+ 
+-	warn_alloc(gfp_mask,
+-			"page allocation failure: order:%u", order);
+ got_pg:
++	if (woke_kswapd)
++		atomic_long_dec(&kswapd_waiters);
++	if (used_vmpressure)
++		vmpressure_dec_users();
++	if (!page)
++		warn_alloc(gfp_mask,
++				"page allocation failure: order:%u", order);
+ 	return page;
+ }
+ 
+diff --git a/mm/vmpressure.c b/mm/vmpressure.c
+index e468da6..05b7f31 100644
+--- a/mm/vmpressure.c
++++ b/mm/vmpressure.c
+@@ -27,22 +27,6 @@
+ #include <linux/module.h>
+ #include <linux/vmpressure.h>
+ 
+-/*
+- * The window size (vmpressure_win) is the number of scanned pages before
+- * we try to analyze scanned/reclaimed ratio. So the window is used as a
+- * rate-limit tunable for the "low" level notification, and also for
+- * averaging the ratio for medium/critical levels. Using small window
+- * sizes can cause lot of false positives, but too big window size will
+- * delay the notifications.
+- *
+- * As the vmscan reclaimer logic works with chunks which are multiple of
+- * SWAP_CLUSTER_MAX, it makes sense to use it for the window size as well.
+- *
+- * TODO: Make the window size depend on machine size, as we do for vmstat
+- * thresholds. Currently we set it to 512 pages (2MB for 4KB pages).
+- */
+-static unsigned long vmpressure_win = SWAP_CLUSTER_MAX * 16;
+-
+ /*
+  * These thresholds are used when we account memory pressure through
+  * scanned/reclaimed ratio. The current values were chosen empirically. In
+@@ -53,13 +37,9 @@ static const unsigned int vmpressure_level_med = 60;
+ static const unsigned int vmpressure_level_critical = 95;
+ 
+ static unsigned long vmpressure_scale_max = 100;
+-module_param_named(vmpressure_scale_max, vmpressure_scale_max,
+-			ulong, 0644);
+ 
+ /* vmpressure values >= this will be scaled based on allocstalls */
+ static unsigned long allocstall_threshold = 70;
+-module_param_named(allocstall_threshold, allocstall_threshold,
+-			ulong, 0644);
+ 
+ static struct vmpressure global_vmpressure;
+ static BLOCKING_NOTIFIER_HEAD(vmpressure_notifier);
+@@ -220,9 +200,10 @@ static void vmpressure_work_fn(struct work_struct *work)
+ 	unsigned long scanned;
+ 	unsigned long reclaimed;
+ 	unsigned long pressure;
++	unsigned long flags;
+ 	enum vmpressure_levels level;
+ 
+-	spin_lock(&vmpr->sr_lock);
++	spin_lock_irqsave(&vmpr->sr_lock, flags);
+ 	/*
+ 	 * Several contexts might be calling vmpressure(), so it is
+ 	 * possible that the work was rescheduled again before the old
+@@ -233,14 +214,14 @@ static void vmpressure_work_fn(struct work_struct *work)
+ 	 */
+ 	scanned = vmpr->tree_scanned;
+ 	if (!scanned) {
+-		spin_unlock(&vmpr->sr_lock);
++		spin_unlock_irqrestore(&vmpr->sr_lock, flags);
+ 		return;
+ 	}
+ 
+ 	reclaimed = vmpr->tree_reclaimed;
+ 	vmpr->tree_scanned = 0;
+ 	vmpr->tree_reclaimed = 0;
+-	spin_unlock(&vmpr->sr_lock);
++	spin_unlock_irqrestore(&vmpr->sr_lock, flags);
+ 
+ 	pressure = vmpressure_calc_pressure(scanned, reclaimed);
+ 	level = vmpressure_level(pressure);
+@@ -255,25 +236,35 @@ static void vmpressure_work_fn(struct work_struct *work)
+ 	} while ((vmpr = vmpressure_parent(vmpr)));
+ }
+ 
+-#ifdef CONFIG_MEMCG
+-static void vmpressure_memcg(gfp_t gfp, struct mem_cgroup *memcg, bool tree,
+-		unsigned long scanned, unsigned long reclaimed)
++static unsigned long calculate_vmpressure_win(void)
+ {
+-	struct vmpressure *vmpr = memcg_to_vmpressure(memcg);
++	long x;
+ 
++	x = global_node_page_state(NR_FILE_PAGES) -
++			global_node_page_state(NR_SHMEM) -
++			total_swapcache_pages() +
++			global_page_state(NR_FREE_PAGES);
++	if (x < 1)
++		return 1;
+ 	/*
+-	 * Here we only want to account pressure that userland is able to
+-	 * help us with. For example, suppose that DMA zone is under
+-	 * pressure; if we notify userland about that kind of pressure,
+-	 * then it will be mostly a waste as it will trigger unnecessary
+-	 * freeing of memory by userland (since userland is more likely to
+-	 * have HIGHMEM/MOVABLE pages instead of the DMA fallback). That
+-	 * is why we include only movable, highmem and FS/IO pages.
+-	 * Indirect reclaim (kswapd) sets sc->gfp_mask to GFP_KERNEL, so
+-	 * we account it too.
++	 * For low (free + cached), vmpressure window should be
++	 * small, and high for higher values of (free + cached).
++	 * But it should not be linear as well. This ensures
++	 * timely vmpressure notifications when system is under
++	 * memory pressure, and optimal number of events when
++	 * cached is high. The sqaure root function is empirically
++	 * found to serve the purpose.
+ 	 */
+-	if (!(gfp & (__GFP_HIGHMEM | __GFP_MOVABLE | __GFP_IO | __GFP_FS)))
+-		return;
++	return int_sqrt(x);
++}
++
++#ifdef CONFIG_MEMCG
++static void vmpressure_memcg(gfp_t gfp, struct mem_cgroup *memcg, bool critical,
++			     bool tree, unsigned long scanned,
++			     unsigned long reclaimed)
++{
++	struct vmpressure *vmpr = memcg_to_vmpressure(memcg);
++	unsigned long flags;
+ 
+ 	/*
+ 	 * If we got here with no pages scanned, then that is an indicator
+@@ -283,16 +274,18 @@ static void vmpressure_memcg(gfp_t gfp, struct mem_cgroup *memcg, bool tree,
+ 	 * (scanning depth) goes too high (deep), we will be notified
+ 	 * through vmpressure_prio(). But so far, keep calm.
+ 	 */
+-	if (!scanned)
++	if (critical)
++		scanned = calculate_vmpressure_win();
++	else if (!scanned)
+ 		return;
+ 
+ 	if (tree) {
+-		spin_lock(&vmpr->sr_lock);
++		spin_lock_irqsave(&vmpr->sr_lock, flags);
+ 		scanned = vmpr->tree_scanned += scanned;
+ 		vmpr->tree_reclaimed += reclaimed;
+-		spin_unlock(&vmpr->sr_lock);
++		spin_unlock_irqrestore(&vmpr->sr_lock, flags);
+ 
+-		if (scanned < vmpressure_win)
++		if (!critical && scanned < calculate_vmpressure_win())
+ 			return;
+ 		schedule_work(&vmpr->work);
+ 	} else {
+@@ -303,15 +296,15 @@ static void vmpressure_memcg(gfp_t gfp, struct mem_cgroup *memcg, bool tree,
+ 		if (!memcg || memcg == root_mem_cgroup)
+ 			return;
+ 
+-		spin_lock(&vmpr->sr_lock);
++		spin_lock_irqsave(&vmpr->sr_lock, flags);
+ 		scanned = vmpr->scanned += scanned;
+ 		reclaimed = vmpr->reclaimed += reclaimed;
+-		if (scanned < vmpressure_win) {
+-			spin_unlock(&vmpr->sr_lock);
++		if (!critical && scanned < calculate_vmpressure_win()) {
++			spin_unlock_irqrestore(&vmpr->sr_lock, flags);
+ 			return;
+ 		}
+ 		vmpr->scanned = vmpr->reclaimed = 0;
+-		spin_unlock(&vmpr->sr_lock);
++		spin_unlock_irqrestore(&vmpr->sr_lock, flags);
+ 
+ 		pressure = vmpressure_calc_pressure(scanned, reclaimed);
+ 		level = vmpressure_level(pressure);
+@@ -330,75 +323,95 @@ static void vmpressure_memcg(gfp_t gfp, struct mem_cgroup *memcg, bool tree,
+ 	}
+ }
+ #else
+-static void vmpressure_memcg(gfp_t gfp, struct mem_cgroup *memcg, bool tree,
+-		unsigned long scanned, unsigned long reclaimed) { }
++static void vmpressure_memcg(gfp_t gfp, struct mem_cgroup *memcg, bool critical,
++			     bool tree, unsigned long scanned,
++			     unsigned long reclaimed) { }
+ #endif
+ 
+-static void calculate_vmpressure_win(void)
++bool vmpressure_inc_users(int order)
+ {
+-	long x;
++	struct vmpressure *vmpr = &global_vmpressure;
++	unsigned long flags;
+ 
+-	x = global_node_page_state(NR_FILE_PAGES) -
+-			global_node_page_state(NR_SHMEM) -
+-			total_swapcache_pages() +
+-			global_page_state(NR_FREE_PAGES);
+-	if (x < 1)
+-		x = 1;
+-	/*
+-	 * For low (free + cached), vmpressure window should be
+-	 * small, and high for higher values of (free + cached).
+-	 * But it should not be linear as well. This ensures
+-	 * timely vmpressure notifications when system is under
+-	 * memory pressure, and optimal number of events when
+-	 * cached is high. The sqaure root function is empirically
+-	 * found to serve the purpose.
+-	 */
+-	x = int_sqrt(x);
+-	vmpressure_win = x;
++	if (order > PAGE_ALLOC_COSTLY_ORDER)
++		return false;
++
++	write_lock_irqsave(&vmpr->users_lock, flags);
++	if (atomic_long_inc_return_relaxed(&vmpr->users) == 1) {
++		/* Clear out stale vmpressure data when reclaim begins */
++		spin_lock(&vmpr->sr_lock);
++		vmpr->scanned = 0;
++		vmpr->reclaimed = 0;
++		vmpr->stall = 0;
++		spin_unlock(&vmpr->sr_lock);
++	}
++	write_unlock_irqrestore(&vmpr->users_lock, flags);
++
++	return true;
+ }
+ 
+-static void vmpressure_global(gfp_t gfp, unsigned long scanned,
+-		unsigned long reclaimed)
++void vmpressure_dec_users(void)
+ {
+ 	struct vmpressure *vmpr = &global_vmpressure;
+-	unsigned long pressure;
+-	unsigned long stall;
+-
+-	if (!(gfp & (__GFP_HIGHMEM | __GFP_MOVABLE | __GFP_IO | __GFP_FS)))
+-		return;
+ 
+-	if (!scanned)
+-		return;
++	/* Decrement the vmpressure user count with release semantics */
++	smp_mb__before_atomic();
++	atomic_long_dec(&vmpr->users);
++}
+ 
+-	spin_lock(&vmpr->sr_lock);
+-	if (!vmpr->scanned)
+-		calculate_vmpressure_win();
++static void vmpressure_global(gfp_t gfp, unsigned long scanned, bool critical,
++			      unsigned long reclaimed)
++{
++	struct vmpressure *vmpr = &global_vmpressure;
++	unsigned long pressure;
++	unsigned long stall;
++	unsigned long flags;
+ 
+-	vmpr->scanned += scanned;
+-	vmpr->reclaimed += reclaimed;
++	if (critical)
++		scanned = calculate_vmpressure_win();
+ 
+-	if (!current_is_kswapd())
+-		vmpr->stall += scanned;
++	spin_lock_irqsave(&vmpr->sr_lock, flags);
++	if (scanned) {
++		vmpr->scanned += scanned;
++		vmpr->reclaimed += reclaimed;
+ 
+-	stall = vmpr->stall;
+-	scanned = vmpr->scanned;
+-	reclaimed = vmpr->reclaimed;
+-	spin_unlock(&vmpr->sr_lock);
++		if (!current_is_kswapd())
++			vmpr->stall += scanned;
+ 
+-	if (scanned < vmpressure_win)
+-		return;
++		stall = vmpr->stall;
++		scanned = vmpr->scanned;
++		reclaimed = vmpr->reclaimed;
+ 
+-	spin_lock(&vmpr->sr_lock);
++		if (!critical && scanned < calculate_vmpressure_win()) {
++			spin_unlock_irqrestore(&vmpr->sr_lock, flags);
++			return;
++		}
++	}
+ 	vmpr->scanned = 0;
+ 	vmpr->reclaimed = 0;
+ 	vmpr->stall = 0;
+-	spin_unlock(&vmpr->sr_lock);
++	spin_unlock_irqrestore(&vmpr->sr_lock, flags);
+ 
+-	pressure = vmpressure_calc_pressure(scanned, reclaimed);
+-	pressure = vmpressure_account_stall(pressure, stall, scanned);
++	if (scanned) {
++		pressure = vmpressure_calc_pressure(scanned, reclaimed);
++		pressure = vmpressure_account_stall(pressure, stall, scanned);
++	} else {
++		pressure = 100;
++	}
+ 	vmpressure_notify(pressure);
+ }
+ 
++static void __vmpressure(gfp_t gfp, struct mem_cgroup *memcg, bool critical,
++			 bool tree, unsigned long scanned,
++			 unsigned long reclaimed)
++{
++	if (!memcg && tree)
++		vmpressure_global(gfp, scanned, critical, reclaimed);
++
++	if (IS_ENABLED(CONFIG_MEMCG))
++		vmpressure_memcg(gfp, memcg, critical, tree, scanned, reclaimed);
++}
++
+ /**
+  * vmpressure() - Account memory pressure through scanned/reclaimed ratio
+  * @gfp:	reclaimer's gfp mask
+@@ -421,13 +434,28 @@ static void vmpressure_global(gfp_t gfp, unsigned long scanned,
+  * This function does not return any value.
+  */
+ void vmpressure(gfp_t gfp, struct mem_cgroup *memcg, bool tree,
+-		unsigned long scanned, unsigned long reclaimed)
++		unsigned long scanned, unsigned long reclaimed, int order)
+ {
+-	if (!memcg && tree)
+-		vmpressure_global(gfp, scanned, reclaimed);
++	struct vmpressure *vmpr = &global_vmpressure;
++	unsigned long flags;
+ 
+-	if (IS_ENABLED(CONFIG_MEMCG))
+-		vmpressure_memcg(gfp, memcg, tree, scanned, reclaimed);
++	if (order > PAGE_ALLOC_COSTLY_ORDER)
++		return;
++
++	/*
++	 * It's possible for kswapd to keep doing reclaim even though memory
++	 * pressure isn't high anymore. We should only track vmpressure when
++	 * there are failed memory allocations actively stuck in the page
++	 * allocator's slow path. No failed allocations means pressure is fine.
++	 */
++	read_lock_irqsave(&vmpr->users_lock, flags);
++	if (!atomic_long_read(&vmpr->users)) {
++		read_unlock_irqrestore(&vmpr->users_lock, flags);
++		return;
++	}
++	read_unlock_irqrestore(&vmpr->users_lock, flags);
++
++	__vmpressure(gfp, memcg, false, tree, scanned, reclaimed);
+ }
+ 
+ /**
+@@ -441,8 +469,11 @@ void vmpressure(gfp_t gfp, struct mem_cgroup *memcg, bool tree,
+  *
+  * This function does not return any value.
+  */
+-void vmpressure_prio(gfp_t gfp, struct mem_cgroup *memcg, int prio)
++void vmpressure_prio(gfp_t gfp, struct mem_cgroup *memcg, int prio, int order)
+ {
++	if (order > PAGE_ALLOC_COSTLY_ORDER)
++		return;
++
+ 	/*
+ 	 * We only use prio for accounting critical level. For more info
+ 	 * see comment for vmpressure_level_critical_prio variable above.
+@@ -457,7 +488,7 @@ void vmpressure_prio(gfp_t gfp, struct mem_cgroup *memcg, int prio)
+ 	 * to the vmpressure() basically means that we signal 'critical'
+ 	 * level.
+ 	 */
+-	vmpressure(gfp, memcg, true, vmpressure_win, 0);
++	__vmpressure(gfp, memcg, true, true, 0, 0);
+ }
+ 
+ /**
+@@ -544,6 +575,8 @@ void vmpressure_init(struct vmpressure *vmpr)
+ 	mutex_init(&vmpr->events_lock);
+ 	INIT_LIST_HEAD(&vmpr->events);
+ 	INIT_WORK(&vmpr->work, vmpressure_work_fn);
++	atomic_long_set(&vmpr->users, 0);
++	rwlock_init(&vmpr->users_lock);
+ }
+ 
+ /**
+diff --git a/mm/vmscan.c b/mm/vmscan.c
+index 29cf672..d180da2 100644
+--- a/mm/vmscan.c
++++ b/mm/vmscan.c
+@@ -2729,7 +2729,7 @@ static bool shrink_node(pg_data_t *pgdat, struct scan_control *sc)
+ 			/* Record the group's reclaim efficiency */
+ 			vmpressure(sc->gfp_mask, memcg, false,
+ 				   sc->nr_scanned - scanned,
+-				   sc->nr_reclaimed - reclaimed);
++				   sc->nr_reclaimed - reclaimed, sc->order);
+ 
+ 			/*
+ 			 * Direct reclaim and kswapd have to scan all memory
+@@ -2767,7 +2767,7 @@ static bool shrink_node(pg_data_t *pgdat, struct scan_control *sc)
+ 		 */
+ 		vmpressure(sc->gfp_mask, sc->target_mem_cgroup, true,
+ 			   sc->nr_scanned - nr_scanned,
+-			   sc->nr_reclaimed - nr_reclaimed);
++			   sc->nr_reclaimed - nr_reclaimed, sc->order);
+ 
+ 		if (reclaim_state) {
+ 			sc->nr_reclaimed += reclaim_state->reclaimed_slab;
+@@ -2945,7 +2945,7 @@ retry:
+ 
+ 	do {
+ 		vmpressure_prio(sc->gfp_mask, sc->target_mem_cgroup,
+-				sc->priority);
++				sc->priority, sc->order);
+ 		sc->nr_scanned = 0;
+ 		shrink_zones(zonelist, sc);
+ 
+@@ -2982,7 +2982,7 @@ retry:
+ 	return 0;
+ }
+ 
+-static bool allow_direct_reclaim(pg_data_t *pgdat)
++static bool allow_direct_reclaim(pg_data_t *pgdat, bool using_kswapd)
+ {
+ 	struct zone *zone;
+ 	unsigned long pfmemalloc_reserve = 0;
+@@ -3011,6 +3011,10 @@ static bool allow_direct_reclaim(pg_data_t *pgdat)
+ 
+ 	wmark_ok = free_pages > pfmemalloc_reserve / 2;
+ 
++	/* The throttled direct reclaimer is now a kswapd waiter */
++	if (unlikely(!using_kswapd && !wmark_ok))
++		atomic_long_inc(&kswapd_waiters);
++
+ 	/* kswapd must be awake if processes are being throttled */
+ 	if (!wmark_ok && waitqueue_active(&pgdat->kswapd_wait)) {
+ 		pgdat->kswapd_classzone_idx = min(pgdat->kswapd_classzone_idx,
+@@ -3075,7 +3079,7 @@ static bool throttle_direct_reclaim(gfp_t gfp_mask, struct zonelist *zonelist,
+ 
+ 		/* Throttle based on the first usable node */
+ 		pgdat = zone->zone_pgdat;
+-		if (allow_direct_reclaim(pgdat))
++		if (allow_direct_reclaim(pgdat, gfp_mask & __GFP_KSWAPD_RECLAIM))
+ 			goto out;
+ 		break;
+ 	}
+@@ -3097,16 +3101,18 @@ static bool throttle_direct_reclaim(gfp_t gfp_mask, struct zonelist *zonelist,
+ 	 */
+ 	if (!(gfp_mask & __GFP_FS)) {
+ 		wait_event_interruptible_timeout(pgdat->pfmemalloc_wait,
+-			allow_direct_reclaim(pgdat), HZ);
++			allow_direct_reclaim(pgdat, true), HZ);
+ 
+ 		goto check_pending;
+ 	}
+ 
+ 	/* Throttle until kswapd wakes the process */
+ 	wait_event_killable(zone->zone_pgdat->pfmemalloc_wait,
+-		allow_direct_reclaim(pgdat));
++		allow_direct_reclaim(pgdat, true));
+ 
+ check_pending:
++	if (unlikely(!(gfp_mask & __GFP_KSWAPD_RECLAIM)))
++		atomic_long_dec(&kswapd_waiters);
+ 	if (fatal_signal_pending(current))
+ 		return true;
+ 
+@@ -3481,11 +3487,12 @@ static int balance_pgdat(pg_data_t *pgdat, int order, int classzone_idx)
+ 		 * able to safely make forward progress. Wake them
+ 		 */
+ 		if (waitqueue_active(&pgdat->pfmemalloc_wait) &&
+-				allow_direct_reclaim(pgdat))
++				allow_direct_reclaim(pgdat, true))
+ 			wake_up_all(&pgdat->pfmemalloc_wait);
+ 
+ 		/* Check if kswapd should be suspending */
+-		if (try_to_freeze() || kthread_should_stop())
++		if (try_to_freeze() || kthread_should_stop() ||
++		    !atomic_long_read(&kswapd_waiters))
+ 			break;
+ 
+ 		/*
