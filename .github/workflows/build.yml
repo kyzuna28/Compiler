@@ -1,4 +1,3 @@
-# Kyzuna Project - Customized for Poco F1 (beryllium)
 name: Tes Build V2
 run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }} | ${{ inputs.rom_optimization }}
 
@@ -33,42 +32,43 @@ on:
         required: true
         type: choice
         options:
-        - zyc-clang
-        - yuki-clang
-        - weebx-clang
-        - neutron-clang
-        - aosp-clang
-        - debian-clang
+          - zyc-clang
+          - yuki-clang
+          - weebx-clang
+          - neutron-clang
+          - aosp-clang
+          - debian-clang
       lto_mode:
         description: 'LTO Optimization'
         default: 'no lto'
         required: true
         type: choice
         options:
-        - no lto
-        - full
-        - thin
+          - no lto
+          - full
+          - thin
       kernelsu:
         description: 'Pilih Root (Fork KSU / APatch)'
         default: 'none'
         required: true
         type: choice
         options:
-        - "resukisu"
-        - "sukisu"
-        - "next"
-        - "xxksu"
-        - "rsuntk"
-        - "apatch"
-        - "none"
+          - "resukisu"
+          - "sukisu"
+          - "next"
+          - "thre"
+          - "xxksu"
+          - "rsuntk"
+          - "apatch"
+          - "none"
       susfs_enable:
         description: 'Enable SuSFS (Hide Root)'
         default: 'false'
         required: true
         type: choice
         options:
-        - "false"
-        - "true"
+          - "false"
+          - "true"
       custom_tweaks:
         description: 'Custom Tweaks (patch/ Dir, cth: lz4.patch, api.patch)'
         default: 'none'
@@ -90,8 +90,8 @@ on:
         required: true
         type: choice
         options:
-        - no hash
-        - hash
+          - no hash
+          - hash
       kernel-url:
         description: 'Kernel Source URL'
         default: 'https://github.com/kyzuna28/kyy.git'
@@ -120,324 +120,308 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-    - name: Clean Environment & Install Dependencies
-      run: |
-        # Setup timezone & free up disk space
-        sudo timedatectl set-timezone Asia/Jakarta
-        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-        sudo docker image prune -af
-        
-        # Install required dependencies
-        sudo apt-get update
-        sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch lsb-release software-properties-common gnupg
-        
-        # Symlink libtinfo fallback
-        [[ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]] && sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || sudo apt-get install --no-install-recommends -y libtinfo5
+      - name: Clean Environment & Install Dependencies
+        run: |
+          sudo timedatectl set-timezone Asia/Jakarta
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch lsb-release software-properties-common gnupg
+          [[ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]] && sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || sudo apt-get install --no-install-recommends -y libtinfo5
 
-    - name: Setup Dynamic Swap Space
-      run: |
-        # Configure swap size based on LTO mode
-        sudo swapoff -a || true
-        sudo rm -f /mnt/swapfile || true
-        SWAP_SIZE=$([[ "${{ inputs.lto_mode }}" == "full" ]] && echo "16G" || echo "8G")
-        
-        sudo fallocate -l $SWAP_SIZE /mnt/swapfile
-        sudo chmod 600 /mnt/swapfile
-        sudo mkswap /mnt/swapfile
-        sudo swapon /mnt/swapfile
+      - name: Setup Dynamic Swap Space
+        run: |
+          sudo swapoff -a || true
+          sudo rm -f /mnt/swapfile || true
+          SWAP_SIZE=$([[ "${{ inputs.lto_mode }}" == "full" ]] && echo "16G" || echo "8G")
+          sudo fallocate -l $SWAP_SIZE /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
 
-    - name: Download Toolchain
-      run: |
-        mkdir -p $HOME/tc
-        cd $HOME
-        
-        # Download selected compiler
-        case "${{ inputs.compiler }}" in
-          zyc-clang) git clone --depth=1 https://gitlab.com/clangsantoni/zyc_clang.git -b 21 tc ;;
-          yuki-clang) git clone --depth=1 https://gitlab.com/TheXPerienceProject/yuki_clang.git -b 18.0.0 tc ;;
-          weebx-clang) curl -sL https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz | tar -xz -C tc ;;
-          neutron-clang) cd tc && curl -sLO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" && chmod +x antman && ./antman -S ;;
-          aosp-clang) git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 tc ;;
-          debian-clang)
-            wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 21
-            sudo apt-get install --no-install-recommends -y clang-21 lld-21 llvm-21
-            mkdir -p tc/bin
-            echo -e '#!/bin/bash\nif [[ "$1" == "--version" || "$1" == "-v" ]]; then echo -e "Debian clang version 21.1.8\nTarget: aarch64-unknown-linux-gnu"; exit 0; fi\nexec /usr/bin/clang-21 "$@"' > tc/bin/clang
-            echo -e '#!/bin/bash\nif [[ "$1" == "--version" || "$1" == "-v" ]]; then echo "Debian LLD 21.1.8"; exit 0; fi\nexec /usr/bin/ld.lld-21 "$@"' > tc/bin/ld.lld
-            chmod +x tc/bin/*
-            for tool in ar nm objcopy objdump; do ln -sf /usr/bin/llvm-$tool-21 tc/bin/llvm-$tool; done
-            ;;
-        esac
-
-    - name: Clone Kernel Source & Init Submodules
-      run: |
-        git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
-        cd kernel-dir
-        git submodule update --init --recursive
-
-    - name: Apply Kernel Config & Root Solutions
-      run: |
-        cd kernel-dir
-        export PATH=$HOME/tc/bin:$PATH
-        TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
-        REPO_RAW="https://raw.githubusercontent.com/kyzuna28/Compiler/main"
-
-        # Clean extraversion
-        sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
-        sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' "$TARGET_CONFIG" || true
-        
-        # Custom Compiler String setup
-        COMPILER_NAME=$(echo "${{ inputs.compiler }}" | awk -F'-' '{print toupper(substr($1,1,1)) substr($1,2) " Clang"}')
-        RAW_CLANG_VER=$(clang --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
-        RAW_LLD_VER=$(ld.lld --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || echo "$RAW_CLANG_VER")
-        CUSTOM_COMPILER_STRING="${COMPILER_NAME:-Debian Clang} ${RAW_CLANG_VER} ✦ Pipeline: pgo • autofdo • bolt • propeller • thinlto • mlgo • polly • -o3 ✦ LLD ${RAW_LLD_VER}"
-        echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
-        sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
-
-        # Config Helpers
-        enable_cfg() { for cfg in "$@"; do echo "CONFIG_$cfg=y" >> "$TARGET_CONFIG"; done; }
-        disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
-
-        # ==========================================
-        # 1. TWEAK PATCHES (Dieksekusi duluan dari patch/)
-        # ==========================================
-        if [[ "${{ inputs.custom_tweaks }}" != "none" && -n "${{ inputs.custom_tweaks }}" ]]; then
-          echo "🛠️ [TWEAKS] Menerapkan Custom Tweaks dari folder patch/..."
-          IFS=',' read -ra TWEAKS <<< "${{ inputs.custom_tweaks }}"
-          for tweak in "${TWEAKS[@]}"; do
-            tweak=$(echo "$tweak" | xargs)
-            echo "⬇️ Mengunduh $tweak..."
-            wget -q "$REPO_RAW/patch/$tweak" -O "$tweak"
-            if [ -f "$tweak" ]; then
-              echo "🩹 Menerapkan patch $tweak..."
-              patch -p1 < "$tweak" || echo "⚠️ Gagal menerapkan $tweak (conflict possible)."
-            else
-              echo "❌ Gagal mengunduh $tweak. Pastikan nama benar!"
-            fi
-          done
-        fi
-
-        # ==========================================
-        # 2. ROOT CONFIGURATIONS (Dynamic KSU / APatch)
-        # ==========================================
-        if [ "${{ inputs.kernelsu }}" == "none" ]; then
-          echo "🧹 [ROOT] Skip instalasi Root (Kernel bersih)."
-          
-        elif [ "${{ inputs.kernelsu }}" == "apatch" ]; then
-          echo "🧬 [APATCH] Mengonfigurasi APatch..."
-          enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
-          
-        else
-          # Dynamic KernelSU variables setup
-          KSU_FORK="${{ inputs.kernelsu }}"
-          SUSFS_STATE="${{ inputs.susfs_enable }}"
-          
-          echo "🚀 [KSU] Menyiapkan integrasi untuk: $KSU_FORK"
-          
-          case "$KSU_FORK" in
-            xxksu)
-              KSU_AUTHOR="backslashxx"; KSU_NAME="KernelSU"; KSU_ORIGIN_BRANCH="master"; KSU_BRANCH="master"
-              [[ "$SUSFS_STATE" == "true" ]] && echo "❌ ERROR: xxksu tidak mendukung SuSFS!" && exit 1
-              ;;
-            rsuntk)
-              KSU_AUTHOR="rsuntk"; KSU_NAME="KernelSU"; KSU_ORIGIN_BRANCH="main"; KSU_BRANCH="main"
-              [[ "$SUSFS_STATE" == "true" ]] && echo "❌ ERROR: rsuntk tidak mendukung SuSFS!" && exit 1
-              ;;
-            sukisu)
-              KSU_AUTHOR="SukiSU-Ultra"; KSU_NAME="SukiSU-Ultra"; KSU_ORIGIN_BRANCH="main"; KSU_BRANCH="builtin"
-              ;;
-            next)
-              KSU_AUTHOR="KernelSU-Next"; KSU_NAME="KernelSU-Next"; KSU_ORIGIN_BRANCH="legacy"; KSU_BRANCH="legacy"
-              [[ "$SUSFS_STATE" == "true" ]] && echo "❌ ERROR: next (legacy) tidak mendukung SuSFS!" && exit 1
-              ;;
-            resukisu)
-              KSU_AUTHOR="ReSukiSU"; KSU_NAME="ReSukiSU"; KSU_ORIGIN_BRANCH="main"; KSU_BRANCH="main"
+      - name: Download Toolchain
+        run: |
+          mkdir -p $HOME/tc
+          cd $HOME
+          case "${{ inputs.compiler }}" in
+            zyc-clang) git clone --depth=1 https://gitlab.com/clangsantoni/zyc_clang.git -b 21 tc ;;
+            yuki-clang) git clone --depth=1 https://gitlab.com/TheXPerienceProject/yuki_clang.git -b 18.0.0 tc ;;
+            weebx-clang) curl -sL https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz | tar -xz -C tc ;;
+            neutron-clang) cd tc && curl -sLO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" && chmod +x antman && ./antman -S ;;
+            aosp-clang) git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 tc ;;
+            debian-clang)
+              wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 21
+              sudo apt-get install --no-install-recommends -y clang-21 lld-21 llvm-21
+              mkdir -p tc/bin
+              echo -e '#!/bin/bash\nif [[ "$1" == "--version" || "$1" == "-v" ]]; then echo -e "Debian clang version 21.1.8\nTarget: aarch64-unknown-linux-gnu"; exit 0; fi\nexec /usr/bin/clang-21 "$@"' > tc/bin/clang
+              echo -e '#!/bin/bash\nif [[ "$1" == "--version" || "$1" == "-v" ]]; then echo "Debian LLD 21.1.8"; exit 0; fi\nexec /usr/bin/ld.lld-21 "$@"' > tc/bin/ld.lld
+              chmod +x tc/bin/*
+              for tool in ar nm objcopy objdump; do ln -sf /usr/bin/llvm-$tool-21 tc/bin/llvm-$tool; done
               ;;
           esac
 
-          # UNDUH KSU TERLEBIH DAHULU SEBELUM EKSEKUSI PATCH/HOOK
-          echo "📥 [KSU] Mengunduh & Install $KSU_NAME via setup.sh..."
-          curl -sSL "https://raw.githubusercontent.com/${KSU_AUTHOR}/${KSU_NAME}/refs/heads/${KSU_ORIGIN_BRANCH}/kernel/setup.sh" | bash -s "$KSU_BRANCH"
+      - name: Clone Kernel Source & Init Submodules
+        run: |
+          git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+          cd kernel-dir
+          git submodule update --init --recursive
 
-          # EKSEKUSI PATCH SUSFS & HOOK SETELAH FOLDER KSU TERSEDIA
-          if [ "$SUSFS_STATE" == "true" ]; then
-            echo "🩹 [SUSFS] Menerapkan patch SuSFS & Inline Hook..."
-            wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/susfs_patch_to_4.9.patch"
-            wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/susfs_inline_hook_patches.sh"
-            patch -p1 < susfs_patch_to_4.9.patch
-            bash susfs_inline_hook_patches.sh
-            
-            echo "⚙️ [SUSFS] Menambahkan config SuSFS ke Defconfig..."
-            enable_cfg KSU_SUSFS KSU_SUSFS_SUS_PATH KSU_SUSFS_SUS_MOUNT KSU_SUSFS_SUS_KSTAT KSU_SUSFS_SPOOF_UNAME KSU_SUSFS_ENABLE_LOG KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG KSU_SUSFS_OPEN_REDIRECT KSU_SUSFS_SUS_MAP
-            if grep -q "THREAD_INFO_IN_TASK" "drivers/kernelsu/Kconfig"; then enable_cfg THREAD_INFO_IN_TASK; fi
+      - name: Apply Kernel Config & Root Solutions
+        run: |
+          cd kernel-dir
+          export PATH=$HOME/tc/bin:$PATH
+          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
+          REPO_RAW="https://raw.githubusercontent.com/kyzuna28/Compiler/main"
+          
+          # Clean extraversion
+          sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' "$TARGET_CONFIG" || true
+          
+          # Custom Compiler String setup
+          COMPILER_NAME=$(echo "${{ inputs.compiler }}" | awk -F'-' '{print toupper(substr($1,1,1)) substr($1,2) " Clang"}')
+          RAW_CLANG_VER=$(clang --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+          RAW_LLD_VER=$(ld.lld --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || echo "$RAW_CLANG_VER")
+          CUSTOM_COMPILER_STRING="${COMPILER_NAME:-Debian Clang} ${RAW_CLANG_VER} ✦ Pipeline: pgo • autofdo • bolt • propeller • thinlto • mlgo • polly • -o3 ✦ LLD ${RAW_LLD_VER}"
+          echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
+          sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
+
+          # Config Helpers
+          enable_cfg() { for cfg in "$@"; do echo "CONFIG_$cfg=y" >> "$TARGET_CONFIG"; done; }
+          disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
+
+          # ==========================================
+          # 5. TWEAKS (*.patch / *.sh dan exit jika gagal)
+          # ==========================================
+          if [[ "${{ inputs.custom_tweaks }}" != "none" && -n "${{ inputs.custom_tweaks }}" ]]; then
+              echo "🛠️ [TWEAKS] Menerapkan Custom Tweaks dari folder patch/..."
+              IFS=',' read -ra TWEAKS <<< "${{ inputs.custom_tweaks }}"
+              for tweak in "${TWEAKS[@]}"; do
+                  tweak=$(echo "$tweak" | xargs)
+                  echo "⬇️ Mengunduh $tweak..."
+                  wget -q "$REPO_RAW/patch/$tweak" -O "$tweak"
+                  
+                  if [ -f "$tweak" ]; then
+                      if [[ "$tweak" == *.patch ]]; then
+                          echo "🩹 Menerapkan patch $tweak..."
+                          patch -p1 < "$tweak" || { echo "❌ [FATAL] Gagal menerapkan patch $tweak! Proses dihentikan."; exit 1; }
+                      elif [[ "$tweak" == *.sh ]]; then
+                          echo "📜 Menjalankan script $tweak..."
+                          chmod +x "$tweak"
+                          bash "$tweak" || { echo "❌ [FATAL] Script $tweak gagal! Proses dihentikan."; exit 1; }
+                      else
+                          echo "❌ [FATAL] Ekstensi file $tweak tidak didukung! Gunakan .patch atau .sh."; exit 1;
+                      fi
+                  else
+                      echo "❌ [FATAL] Gagal mengunduh $tweak. Pastikan nama benar!"; exit 1;
+                  fi
+              done
+          fi
+
+          # ==========================================
+          # 6. ROOT & 7. SUSFS
+          # ==========================================
+          if [ "${{ inputs.kernelsu }}" == "none" ]; then
+              echo "🧹 [ROOT] Skip instalasi Root (Kernel bersih)."
+          elif [ "${{ inputs.kernelsu }}" == "apatch" ]; then
+              echo "🧬 [APATCH] Mengonfigurasi APatch..."
+              enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
           else
-            echo "🧹 [HOOK] Menerapkan Syscall Manual Hook (Non-SuSFS)..."
-            wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/syscall_hook_patches.sh"
-            bash syscall_hook_patches.sh
+              # Setup Variabel KernelSU
+              KSU_FORK="${{ inputs.kernelsu }}"
+              SUSFS_STATE="${{ inputs.susfs_enable }}"
+              echo "🚀 [KSU] Menyiapkan integrasi untuk: $KSU_FORK"
+              
+              case "$KSU_FORK" in
+                  xxksu) KSU_AUTHOR="backslashxx"; KSU_NAME="KernelSU"; KSU_ORIGIN_BRANCH="master"; KSU_BRANCH="master"
+                         [[ "$SUSFS_STATE" == "true" ]] && { echo "❌ ERROR: xxksu tidak mendukung SuSFS!"; exit 1; } ;;
+                  rsuntk) KSU_AUTHOR="rsuntk"; KSU_NAME="KernelSU"; KSU_ORIGIN_BRANCH="main"; KSU_BRANCH="main"
+                         [[ "$SUSFS_STATE" == "true" ]] && { echo "❌ ERROR: rsuntk tidak mendukung SuSFS!"; exit 1; } ;;
+                  sukisu) KSU_AUTHOR="SukiSU-Ultra"; KSU_NAME="SukiSU-Ultra"; KSU_ORIGIN_BRANCH="main"; KSU_BRANCH="builtin" ;;
+                  next)   KSU_AUTHOR="KernelSU-Next"; KSU_NAME="KernelSU-Next"; KSU_ORIGIN_BRANCH="legacy"; KSU_BRANCH="legacy"
+                         [[ "$SUSFS_STATE" == "true" ]] && { echo "❌ ERROR: next (legacy) tidak mendukung SuSFS!"; exit 1; } ;;
+                  resukisu) KSU_AUTHOR="ReSukiSU"; KSU_NAME="ReSukiSU"; KSU_ORIGIN_BRANCH="main"; KSU_BRANCH="main" ;;
+                  thre)   KSU_AUTHOR="ThRE-Team"; KSU_NAME="KernelSU-Next"; KSU_ORIGIN_BRANCH="main"; KSU_BRANCH="main" ;;
+              esac
+
+              echo "📥 [KSU] Mengunduh & Install $KSU_NAME via setup.sh..."
+              curl -sSL "https://raw.githubusercontent.com/${KSU_AUTHOR}/${KSU_NAME}/refs/heads/${KSU_ORIGIN_BRANCH}/kernel/setup.sh" | bash -s "$KSU_BRANCH" || { echo "❌ [FATAL] Gagal fetch KernelSU!"; exit 1; }
+
+              # --- 7. SUSFS CONFIGURATION ---
+              if [ "$SUSFS_STATE" == "true" ]; then
+                  echo "🩹 [SUSFS] Menerapkan Base Patch SuSFS (Tanpa Auto-Hook)..."
+                  wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/susfs_patch_to_4.9.patch"
+                  patch -p1 < susfs_patch_to_4.9.patch || { echo "❌ [FATAL] Patch SuSFS gagal!"; exit 1; }
+                  
+                  echo "⚙️ [SUSFS] Menambahkan config SuSFS ke Defconfig..."
+                  enable_cfg KSU_SUSFS KSU_SUSFS_SUS_PATH KSU_SUSFS_SUS_MOUNT KSU_SUSFS_SUS_KSTAT KSU_SUSFS_SPOOF_UNAME KSU_SUSFS_ENABLE_LOG KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG KSU_SUSFS_OPEN_REDIRECT KSU_SUSFS_SUS_MAP
+                  if grep -q "THREAD_INFO_IN_TASK" "drivers/kernelsu/Kconfig"; then enable_cfg THREAD_INFO_IN_TASK; fi
+              else
+                  echo "🧹 [SUSFS] Disable. (Tidak ada konfigurasi SuSFS tambahan)"
+              fi
+
+              # Config Defconfig untuk KSU
+              echo "⚙️ [KSU] Menerapkan Defconfig khusus untuk $KSU_FORK..."
+              enable_cfg KSU KALLSYMS KALLSYMS_ALL
+              
+              if [[ "$KSU_FORK" == "rsuntk" || "$KSU_FORK" == "next" || "$KSU_FORK" == "resukisu" || "$KSU_FORK" == "sukisu" ]]; then
+                  if [[ "$SUSFS_STATE" != "true" ]]; then
+                      enable_cfg KSU_MANUAL_HOOK KSU_MANUAL_HOOK_AUTO_SETUID_HOOK KSU_MANUAL_HOOK_AUTO_INITRC_HOOK KSU_MANUAL_HOOK_AUTO_INPUT_HOOK
+                  fi
+              fi
+              
+              if [[ "$KSU_FORK" == "thre" ]]; then 
+                  enable_cfg KSU_MANUAL_HOOK 
+              fi
+              
+              if [[ "$KSU_FORK" == "xxksu" ]]; then disable_cfg KSU_KPROBES_KSUD; fi
+              disable_cfg KPROBES HAVE_KPROBES
+              echo "✨ [KSU] Selesai mengatur Root!"
           fi
 
-          echo "⚙️ [KSU] Menerapkan Defconfig khusus untuk $KSU_FORK..."
-          enable_cfg KSU KALLSYMS KALLSYMS_ALL
+          # ==========================================
+          # 8. HOOK (Custom .patch dan .sh dari repo utama)
+          # ==========================================
+          if [[ "${{ inputs.custom_hooks_patch }}" != "none" && -n "${{ inputs.custom_hooks_patch }}" ]]; then
+              echo "🪝 [HOOK] Menerapkan Custom Hook Patches (.patch)..."
+              IFS=',' read -ra HOOKS <<< "${{ inputs.custom_hooks_patch }}"
+              for hook in "${HOOKS[@]}"; do
+                  hook=$(echo "$hook" | xargs)
+                  echo "⬇️ Mengunduh $hook..."
+                  wget -q "$REPO_RAW/$hook" -O "$hook"
+                  if [ -f "$hook" ]; then
+                      echo "🩹 Menerapkan patch $hook..."
+                      patch -p1 < "$hook" || { echo "❌ [FATAL] Gagal menerapkan patch $hook! Proses berhenti."; exit 1; }
+                  else
+                      echo "❌ [FATAL] Gagal mengunduh $hook. Pastikan nama benar!"; exit 1;
+                  fi
+              done
+          fi
+
+          if [[ "${{ inputs.custom_sh }}" != "none" && -n "${{ inputs.custom_sh }}" ]]; then
+              echo "📜 [HOOK] Mengeksekusi Custom Scripts (.sh)..."
+              IFS=',' read -ra SCRIPTS <<< "${{ inputs.custom_sh }}"
+              for script in "${SCRIPTS[@]}"; do
+                  script=$(echo "$script" | xargs)
+                  echo "⬇️ Mengunduh $script..."
+                  wget -q "$REPO_RAW/$script" -O "$script"
+                  if [ -f "$script" ]; then
+                      echo "🚀 Menjalankan script $script..."
+                      chmod +x "$script"
+                      bash "$script" || { echo "❌ [FATAL] Terjadi error saat mengeksekusi $script! Proses berhenti."; exit 1; }
+                  else
+                      echo "❌ [FATAL] Gagal mengunduh $script. Pastikan nama benar!"; exit 1;
+                  fi
+              done
+          fi
+
+          # LTO Configuration
+          disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
+          case "${{ inputs.lto_mode }}" in
+              full) enable_cfg LTO LTO_CLANG LTO_CLANG_FULL ;;
+              thin) enable_cfg LTO LTO_CLANG THINLTO LTO_CLANG_THIN ;;
+              *)    enable_cfg LTO_NONE ;;
+          esac
+
+      - name: Compile Kernel
+        run: |
+          cd kernel-dir
+          export PATH=$HOME/tc/bin:$PATH
+          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
+          export KBUILD_BUILD_HOST="project"
+          export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
+          export LLVM_PARALLEL=1
           
-          if [[ "$KSU_FORK" == "rsuntk" || "$KSU_FORK" == "next" || "$KSU_FORK" == "resukisu" || "$KSU_FORK" == "sukisu" ]]; then
-            if [[ "$SUSFS_STATE" != "true" ]]; then
-              enable_cfg KSU_MANUAL_HOOK KSU_MANUAL_HOOK_AUTO_SETUID_HOOK KSU_MANUAL_HOOK_AUTO_INITRC_HOOK KSU_MANUAL_HOOK_AUTO_INPUT_HOOK
+          [[ "${{ inputs.version_hash }}" == "no hash" ]] && echo "" > .scmversion && export LOCALVERSION_AUTO="" || rm -f .scmversion
+          
+          rm -rf ../out && mkdir -p ../out
+          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
+          
+          EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
+          OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75 -mtune=cortex-a75 -falign-functions=64"
+          
+          CORES=$(nproc --all)
+          MAKE_JOBS=$(( (CORES + 1) / 2 ))
+          [[ "${{ inputs.lto_mode }}" == "full" ]] && MAKE_JOBS=2
+          [[ "$MAKE_JOBS" -lt 2 ]] && MAKE_JOBS=2
+          [[ "$MAKE_JOBS" -gt 8 ]] && MAKE_JOBS=8
+          
+          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
+          CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
+          
+          echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
+          
+          make -j$MAKE_JOBS ARCH=arm64 O=../out \
+            LLVM=1 LLVM_IAS=1 \
+            CC=clang HOSTCC=clang HOSTCXX=clang++ \
+            LD=ld.lld HOSTLD=ld.lld \
+            AR=llvm-ar HOSTAR=llvm-ar NM=llvm-nm \
+            OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip READELF=llvm-readelf \
+            CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
+            LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
+            KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
+            Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
+            
+          if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
+            echo "❌ [ERROR] Kernel compilation failed." && exit 1
+          else
+            echo "✅ [SUCCESS] Kernel compilation successful."
+          fi
+
+      - name: Package with AnyKernel3
+        run: |
+          echo "📥 [FETCH] Mengkloning repositori AnyKernel3..."
+          git clone --depth=1 ${{ inputs.anykernel-url }} AnyKernel3
+          rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk,*.txt,*.md}
+          KERNEL_DIR="out/arch/arm64/boot"
+          
+          echo "⚙️ [PROSES] Menyiapkan file kernel..."
+          if [[ -f "$KERNEL_DIR/Image.gz" && -f "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" ]]; then
+            echo "📦 [BUILD] Menggabungkan Image.gz dengan Beryllium DTB..."
+            cat "$KERNEL_DIR/Image.gz" "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" > AnyKernel3/Image.gz-dtb
+          else
+            COMPRESSED_FOUND="false"
+            for img in Image.gz-dtb Image-dtb Image.gz; do
+              if [[ -f "$KERNEL_DIR/$img" ]]; then
+                echo "✅ [INFO] Ditemukan file $img, menyalin ke AnyKernel3..."
+                cp "$KERNEL_DIR/$img" AnyKernel3/
+                COMPRESSED_FOUND="true"
+                break
+              fi
+            done
+            if [[ "$COMPRESSED_FOUND" != "true" && -f "$KERNEL_DIR/Image" ]]; then
+              echo "⚠️ [WARN] Image terkompresi tidak ditemukan!"
+              echo "🗜️ [COMPRESS] Mengompres Image mentah ke Gzip secara manual (-9)..."
+              gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz
             fi
           fi
           
-          if [[ "$KSU_FORK" == "xxksu" ]]; then disable_cfg KSU_KPROBES_KSUD; fi
-          disable_cfg KPROBES HAVE_KPROBES
-          echo "✨ [KSU] Selesai mengatur Root!"
-        fi
-
-        # ==========================================
-        # 3. CUSTOM HOOKS (.patch) & SCRIPTS (.sh) (Dieksekusi Bareng Setelah KSU)
-        # ==========================================
-        if [[ "${{ inputs.custom_hooks_patch }}" != "none" && -n "${{ inputs.custom_hooks_patch }}" ]]; then
-          echo "🪝 [HOOKS] Menerapkan Custom Hook Patches dari Root Repo..."
-          IFS=',' read -ra HOOKS <<< "${{ inputs.custom_hooks_patch }}"
-          for hook in "${HOOKS[@]}"; do
-            hook=$(echo "$hook" | xargs)
-            echo "⬇️ Mengunduh $hook..."
-            wget -q "$REPO_RAW/$hook" -O "$hook"
-            if [ -f "$hook" ]; then
-              echo "🩹 Menerapkan patch $hook..."
-              patch -p1 < "$hook" || echo "⚠️ Gagal menerapkan $hook (conflict possible)."
-            else
-              echo "❌ Gagal mengunduh $hook. Pastikan nama benar!"
-            fi
-          done
-        fi
-
-        if [[ "${{ inputs.custom_sh }}" != "none" && -n "${{ inputs.custom_sh }}" ]]; then
-          echo "📜 [SCRIPTS] Mengeksekusi Custom Shell Scripts dari Root Repo..."
-          IFS=',' read -ra SCRIPTS <<< "${{ inputs.custom_sh }}"
-          for script in "${SCRIPTS[@]}"; do
-            script=$(echo "$script" | xargs)
-            echo "⬇️ Mengunduh $script..."
-            wget -q "$REPO_RAW/$script" -O "$script"
-            if [ -f "$script" ]; then
-              echo "🚀 Menjalankan script $script..."
-              chmod +x "$script"
-              bash "$script" || echo "⚠️ Terjadi error saat menjalankan $script."
-            else
-              echo "❌ Gagal mengunduh $script. Pastikan nama benar!"
-            fi
-          done
-        fi
-        
-        # LTO Configuration
-        disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
-        case "${{ inputs.lto_mode }}" in
-          full) enable_cfg LTO LTO_CLANG LTO_CLANG_FULL ;;
-          thin) enable_cfg LTO LTO_CLANG THINLTO LTO_CLANG_THIN ;;
-          *) enable_cfg LTO_NONE ;;
-        esac
-
-    - name: Compile Kernel
-      run: |
-        cd kernel-dir
-        export PATH=$HOME/tc/bin:$PATH
-        export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-        export KBUILD_BUILD_HOST="project"
-        export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
-        export LLVM_PARALLEL=1
-
-        [[ "${{ inputs.version_hash }}" == "no hash" ]] && echo "" > .scmversion && export LOCALVERSION_AUTO="" || rm -f .scmversion
-
-        rm -rf ../out && mkdir -p ../out
-        make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
-
-        # Target compiler flag khusus Debian Clang
-        EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
-        OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75 -mtune=cortex-a75 -falign-functions=64"
-        
-        CORES=$(nproc --all)
-        MAKE_JOBS=$(( (CORES + 1) / 2 ))
-        [[ "${{ inputs.lto_mode }}" == "full" ]] && MAKE_JOBS=2
-        [[ "$MAKE_JOBS" -lt 2 ]] && MAKE_JOBS=2
-        [[ "$MAKE_JOBS" -gt 8 ]] && MAKE_JOBS=8
-
-        CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
-        CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
-
-        echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
-        
-        # ⚡ EKSEKUSI FULL LLVM MURNI (Host & Target)
-        make -j$MAKE_JOBS ARCH=arm64 O=../out \
-          LLVM=1 LLVM_IAS=1 \
-          CC=clang HOSTCC=clang HOSTCXX=clang++ \
-          LD=ld.lld HOSTLD=ld.lld \
-          AR=llvm-ar HOSTAR=llvm-ar NM=llvm-nm \
-          OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-          STRIP=llvm-strip READELF=llvm-readelf \
-          CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-          LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
-          KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
-          Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
-        
-        if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
-          echo "❌ [ERROR] Kernel compilation failed." && exit 1
-        else
-          echo "✅ [SUCCESS] Kernel compilation successful."
-        fi
-        
-    - name: Package with AnyKernel3
-      run: |
-        echo "📥 [FETCH] Mengkloning repositori AnyKernel3..."
-        git clone --depth=1 ${{ inputs.anykernel-url }} AnyKernel3
-        rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk,*.txt,*.md}
-
-        KERNEL_DIR="out/arch/arm64/boot"
-        
-        echo "⚙️ [PROSES] Menyiapkan file kernel..."
-        if [[ -f "$KERNEL_DIR/Image.gz" && -f "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" ]]; then
-          echo "📦 [BUILD] Menggabungkan Image.gz dengan Beryllium DTB..."
-          cat "$KERNEL_DIR/Image.gz" "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" > AnyKernel3/Image.gz-dtb
-        else
-          COMPRESSED_FOUND="false"
-          for img in Image.gz-dtb Image-dtb Image.gz; do
-            if [[ -f "$KERNEL_DIR/$img" ]]; then 
-              echo "✅ [INFO] Ditemukan file $img, menyalin ke AnyKernel3..."
-              cp "$KERNEL_DIR/$img" AnyKernel3/
-              COMPRESSED_FOUND="true"
-              break
-            fi
-          done
-          
-          if [[ "$COMPRESSED_FOUND" != "true" && -f "$KERNEL_DIR/Image" ]]; then
-            echo "⚠️ [WARN] Image terkompresi tidak ditemukan!"
-            echo "🗜️ [COMPRESS] Mengompres Image mentah ke Gzip secara manual (-9)..."
-            gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz
+          if [[ -f "$KERNEL_DIR/dtbo.img" ]]; then
+            echo "💾 [INFO] Ditemukan dtbo.img, menyalin ke AnyKernel3..."
+            cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
           fi
-        fi
+          
+          rm -f AnyKernel3/*placeholder
+          
+          echo "🔍 [CEK] Memverifikasi hasil packaging AnyKernel3..."
+          if ls AnyKernel3/Image* 1> /dev/null 2>&1; then
+            echo "✨ [SUKSES] File kernel berhasil dipaketkan ke dalam folder AnyKernel3!"
+            echo "🎉 [SELESAI] Siap untuk proses Upload."
+          else
+            echo "❌ [GAGAL] File Image kernel tidak ditemukan di folder AnyKernel3!"
+            echo "💀 [FATAL] Terjadi kesalahan saat memindahkan kernel build. Membatalkan proses..."
+            exit 1
+          fi
+          
+          echo "🏷️ [TAG] Menyiapkan nama output Artifact..."
+          CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
+          echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
 
-        if [[ -f "$KERNEL_DIR/dtbo.img" ]]; then
-          echo "💾 [INFO] Ditemukan dtbo.img, menyalin ke AnyKernel3..."
-          cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
-        fi
-        
-        rm -f AnyKernel3/*placeholder
-
-        # --- Pengecekan Akhir (Status Berhasil / Gagal) ---
-        echo "🔍 [CEK] Memverifikasi hasil packaging AnyKernel3..."
-        if ls AnyKernel3/Image* 1> /dev/null 2>&1; then
-          echo "✨ [SUKSES] File kernel berhasil dipaketkan ke dalam folder AnyKernel3!"
-          echo "🎉 [SELESAI] Siap untuk proses Upload."
-        else
-          echo "❌ [GAGAL] File Image kernel tidak ditemukan di folder AnyKernel3!"
-          echo "💀 [FATAL] Terjadi kesalahan saat memindahkan kernel build. Membatalkan proses..."
-          exit 1
-        fi
-
-        echo "🏷️ [TAG] Menyiapkan nama output Artifact..."
-        CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
-        echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
-
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: "${{ env.FINAL_ARTIFACT_NAME }}"
-        path: AnyKernel3/
-        compression-level: 9
-        if-no-files-found: error
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ env.FINAL_ARTIFACT_NAME }}"
+          path: AnyKernel3/
+          compression-level: 9
+          if-no-files-found: error
+          
