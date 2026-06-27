@@ -1,5 +1,5 @@
 name: Tes Build V2
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }} | ${{ inputs.rom_optimization }}
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }}
 
 on:
   workflow_dispatch:
