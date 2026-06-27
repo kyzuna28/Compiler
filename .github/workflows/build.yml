@@ -195,39 +195,6 @@ jobs:
         enable_cfg SECTION_MISMATCH_WARN_ONLY ANDROID_BINDERFS CGROUPS CGROUP_BPF MEMCG MEMCG_SWAP OVERLAY_FS
 
         # ==========================================
-        # PRE-ROOT: Clean Hook & SuSFS Setup
-        # ==========================================
-        if [ "${{ inputs.kernelsu }}" != "none" ] && [ "${{ inputs.kernelsu }}" != "apatch" ]; then
-          
-          # 1. Pengecekan SuSFS
-          if [ "${{ inputs.susfs_enable }}" == "true" ]; then
-            echo "🩹 [SUSFS] Menerapkan patch SuSFS & Inline Hook..."
-            
-            # Unduh patch dan script dari repo kamu
-            wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/susfs_patch_to_4.9.patch"
-            wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/susfs_inline_hook_patches.sh"
-            
-            # Terapkan patch
-            patch -p1 < susfs_patch_to_4.9.patch
-            
-            # Jalankan script inline hook (pastikan script ini executable)
-            bash susfs_inline_hook_patches.sh
-            
-            echo "⚙️ [SUSFS] Menambahkan config SuSFS ke Defconfig..."
-            enable_cfg KSU_SUSFS KSU_SUSFS_SUS_PATH KSU_SUSFS_SUS_MOUNT KSU_SUSFS_SUS_KSTAT KSU_SUSFS_SPOOF_UNAME KSU_SUSFS_ENABLE_LOG KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG KSU_SUSFS_OPEN_REDIRECT KSU_SUSFS_SUS_MAP
-            if grep -q "THREAD_INFO_IN_TASK" "drivers/kernelsu/Kconfig"; then enable_cfg THREAD_INFO_IN_TASK; fi
-          
-          else
-            echo "🧹 [HOOK] Menerapkan Syscall Manual Hook (Non-SuSFS)..."
-            # Unduh script syscall hook
-            wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/syscall_hook_patches.sh"
-            
-            # Jalankan script
-            bash syscall_hook_patches.sh
-          fi
-        fi
-
-        # ==========================================
         # ROOT CONFIGURATIONS (Dynamic KSU / APatch)
         # ==========================================
         if [ "${{ inputs.kernelsu }}" == "none" ]; then
@@ -265,13 +232,41 @@ jobs:
               ;;
           esac
 
+          # 1. UNDUH KSU TERLEBIH DAHULU SEBELUM EKSEKUSI PATCH/HOOK
           echo "📥 [KSU] Mengunduh & Install $KSU_NAME via setup.sh..."
           curl -sSL "https://raw.githubusercontent.com/${KSU_AUTHOR}/${KSU_NAME}/refs/heads/${KSU_ORIGIN_BRANCH}/kernel/setup.sh" | bash -s "$KSU_BRANCH"
+
+          # 2. EKSEKUSI PATCH SUSFS & HOOK SETELAH FOLDER KSU TERSEDIA
+          if [ "$SUSFS_STATE" == "true" ]; then
+            echo "🩹 [SUSFS] Menerapkan patch SuSFS & Inline Hook..."
+            
+            # Unduh patch dan script dari repo kamu
+            wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/susfs_patch_to_4.9.patch"
+            wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/susfs_inline_hook_patches.sh"
+            
+            # Terapkan patch (Patch butuh KSU sudah terinstall)
+            patch -p1 < susfs_patch_to_4.9.patch
+            
+            # Jalankan script inline hook
+            bash susfs_inline_hook_patches.sh
+            
+            echo "⚙️ [SUSFS] Menambahkan config SuSFS ke Defconfig..."
+            enable_cfg KSU_SUSFS KSU_SUSFS_SUS_PATH KSU_SUSFS_SUS_MOUNT KSU_SUSFS_SUS_KSTAT KSU_SUSFS_SPOOF_UNAME KSU_SUSFS_ENABLE_LOG KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG KSU_SUSFS_OPEN_REDIRECT KSU_SUSFS_SUS_MAP
+            if grep -q "THREAD_INFO_IN_TASK" "drivers/kernelsu/Kconfig"; then enable_cfg THREAD_INFO_IN_TASK; fi
+          
+          else
+            echo "🧹 [HOOK] Menerapkan Syscall Manual Hook (Non-SuSFS)..."
+            # Unduh script syscall hook
+            wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/syscall_hook_patches.sh"
+            
+            # Jalankan script (Script ini bakal nemu KSU karena udah di-download di langkah 1)
+            bash syscall_hook_patches.sh
+          fi
 
           echo "⚙️ [KSU] Menerapkan Defconfig khusus untuk $KSU_FORK..."
           enable_cfg KSU KALLSYMS KALLSYMS_ALL
           
-          # Konfigurasi spesifik fork dan hook
+          # 3. Konfigurasi spesifik fork dan hook manual di defconfig
           if [[ "$KSU_FORK" == "rsuntk" || "$KSU_FORK" == "next" || "$KSU_FORK" == "resukisu" || "$KSU_FORK" == "sukisu" ]]; then
             if [[ "$SUSFS_STATE" != "true" ]]; then
               enable_cfg KSU_MANUAL_HOOK KSU_MANUAL_HOOK_AUTO_SETUID_HOOK KSU_MANUAL_HOOK_AUTO_INITRC_HOOK KSU_MANUAL_HOOK_AUTO_INPUT_HOOK
