@@ -69,6 +69,14 @@ on:
         options:
           - "false"
           - "true"
+      no_kprobes_workaround:
+        description: 'Enable No-Kprobes SELinux Workaround'
+        default: 'false'
+        required: true
+        type: choice
+        options:
+          - "false"
+          - "true"
       custom_tweaks:
         description: 'Custom Tweaks (patch/.sh/ Dir, cth: lz4.patch, api.patch)'
         default: 'none'
@@ -196,7 +204,7 @@ jobs:
               echo "🛠️ [TWEAKS] Menerapkan Custom Tweaks dari folder patch/..."
               IFS=',' read -ra TWEAKS <<< "${{ inputs.custom_tweaks }}"
               for tweak in "${TWEAKS[@]}"; do
-                  tweak=$(echo "$tweak" | xargs) # Hapus spasi berlebih
+                  tweak=$(echo "$tweak" | xargs)
                   [[ -z "$tweak" ]] && continue
                   
                   echo "⬇️ Mengunduh $tweak..."
@@ -226,7 +234,6 @@ jobs:
               echo "🧬 [APATCH] Mengonfigurasi APatch..."
               enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
           else
-              # Setup Variabel KernelSU
               KSU_FORK="${{ inputs.kernelsu }}"
               SUSFS_STATE="${{ inputs.susfs_enable }}"
               echo "🚀 [KSU] Menyiapkan integrasi untuk: $KSU_FORK"
@@ -246,9 +253,8 @@ jobs:
               echo "📥 [KSU] Mengunduh & Install $KSU_NAME via setup.sh..."
               curl -sSL "https://raw.githubusercontent.com/${KSU_AUTHOR}/${KSU_NAME}/refs/heads/${KSU_ORIGIN_BRANCH}/kernel/setup.sh" | bash -s "$KSU_BRANCH" || { echo "❌ [FATAL] Gagal fetch KernelSU!"; exit 1; }
 
-              # --- 7. SUSFS CONFIGURATION ---
               if [ "$SUSFS_STATE" == "true" ]; then
-                  echo "🩹 [SUSFS] Menerapkan Base Patch SuSFS (Tanpa Auto-Hook)..."
+                  echo "🩹 [SUSFS] Menerapkan Base Patch SuSFS..."
                   wget -q "https://raw.githubusercontent.com/kyzuna28/Compiler/main/susfs_patch_to_4.9.patch"
                   patch -p1 < susfs_patch_to_4.9.patch || { echo "❌ [FATAL] Patch SuSFS gagal!"; exit 1; }
                   
@@ -259,27 +265,22 @@ jobs:
                   echo "🧹 [SUSFS] Disable. (Tidak ada konfigurasi SuSFS tambahan)"
               fi
 
-              # Config Defconfig untuk KSU
               echo "⚙️ [KSU] Menerapkan Defconfig khusus untuk $KSU_FORK..."
               enable_cfg KSU KALLSYMS KALLSYMS_ALL
               
-              if [[ "$KSU_FORK" == "rsuntk" || "$KSU_FORK" == "next" || "$KSU_FORK" == "resukisu" || "$KSU_FORK" == "sukisu" ]]; then
+              if [[ "$KSU_FORK" == "rsuntk" || "$KSU_FORK" == "next" || "$KSU_FORK" == "resukisu" || "$KSU_FORK" == "thre" || "$KSU_FORK" == "sukisu" ]]; then
                   if [[ "$SUSFS_STATE" != "true" ]]; then
-                      enable_cfg KSU_MANUAL_HOOK KSU_MANUAL_HOOK_AUTO_SETUID_HOOK KSU_MANUAL_HOOK_AUTO_INITRC_HOOK KSU_MANUAL_HOOK_AUTO_INPUT_HOOK
+                      enable_cfg KSU_MANUAL_HOOK
                   fi
               fi
               
-              if [[ "$KSU_FORK" == "thre" ]]; then 
-                  enable_cfg KSU_MANUAL_HOOK 
-              fi
-              
+              if [[ "$KSU_FORK" == "thre" ]]; then disable_cfg KPROBES HAVE_KPROBES; fi
               if [[ "$KSU_FORK" == "xxksu" ]]; then disable_cfg KSU_KPROBES_KSUD; fi
-              disable_cfg KPROBES HAVE_KPROBES
               echo "✨ [KSU] Selesai mengatur Root!"
           fi
 
           # ==========================================
-          # 8. HOOK (Custom .patch dan .sh dari repo utama)
+          # 8. HOOK (Custom .patch dan .sh dari Root Dir)
           # ==========================================
           if [[ "${{ inputs.custom_hooks_patch }}" != "none" && -n "${{ inputs.custom_hooks_patch }}" ]]; then
               echo "🪝 [HOOK] Menerapkan Custom Hook Patches dari Root Dir..."
@@ -331,7 +332,52 @@ jobs:
               done
           fi
 
-          # LTO Configuration
+          # ==========================================
+          # 9. NO-KPROBES SELINUX WORKAROUND
+          # ==========================================
+          if [ "${{ inputs.no_kprobes_workaround }}" == "true" ]; then
+              echo "🔓 [NO-KPROBES] Memulai bypass SELinux static state..."
+              
+              KERNEL_VERSION=$(head -n 3 Makefile | grep -E 'VERSION|PATCHLEVEL' | awk '{print $3}' | paste -sd '.')
+              FIRST_VERSION=$(echo "$KERNEL_VERSION" | awk -F '.' '{print $1}')
+              SECOND_VERSION=$(echo "$KERNEL_VERSION" | awk -F '.' '{print $2}')
+              
+              if grep "const write_op" "security/selinux/selinuxfs.c" >/dev/null 2>&1; then
+                  sed -i 's/static ssize_t (\*const write_op\[\])(struct file \*, char \*, size_t)/ssize_t (*const write_op[])(struct file *, char *, size_t)/' security/selinux/selinuxfs.c
+              else
+                  sed -i 's/static ssize_t (\*write_op\[\])(struct file \*, char \*, size_t)/ssize_t (*write_op[])(struct file *, char *, size_t)/' security/selinux/selinuxfs.c
+              fi
+              
+              sed -i 's/^static const struct file_operations sel_handle_status_ops = {/const struct file_operations sel_handle_status_ops = {/' security/selinux/selinuxfs.c
+              echo "✅ [NO-KPROBES] Removed write_op & sel_handle_status_ops static state."
+
+              if [ "$FIRST_VERSION" -lt 5 ] && [ "$SECOND_VERSION" -lt 15 ]; then
+                  if grep -q "sel_mutex" "security/selinux/selinuxfs.c" >/dev/null 2>&1; then
+                      sed -i 's/^static DEFINE_MUTEX(sel_mutex)/DEFINE_MUTEX(sel_mutex)/' security/selinux/selinuxfs.c
+                      echo "✅ [NO-KPROBES] Removed sel_mutex static state."
+                  fi
+                  if grep -q "selinux_status_page" "security/selinux/ss/status.c" >/dev/null 2>&1; then
+                      sed -i 's/^static struct page \*selinux_status_page/struct page *selinux_status_page/' security/selinux/ss/status.c
+                      echo "✅ [NO-KPROBES] Removed selinux_status_page static state."
+                  fi
+                  if grep -q "selinux_status_lock" "security/selinux/ss/status.c" >/dev/null 2>&1; then
+                      sed -i 's/^static DEFINE_MUTEX(selinux_status_lock)/DEFINE_MUTEX(selinux_status_lock)/' security/selinux/ss/status.c
+                      echo "✅ [NO-KPROBES] Removed selinux_status_lock static state."
+                  fi
+              fi
+
+              if [ "$FIRST_VERSION" -lt 4 ] && [ "$SECOND_VERSION" -lt 19 ]; then
+                  if grep -q "selinux_status_page" "security/selinux/hooks.c" >/dev/null 2>&1; then
+                      sed -i 's/^static struct security_operations selinux_ops/struct security_operations selinux_ops/' security/selinux/hooks.c
+                      echo "✅ [NO-KPROBES] Removed selinux_ops static state."
+                  fi
+              fi
+              echo "✨ [NO-KPROBES] Bypass SELinux selesai!"
+          fi
+
+          # ==========================================
+          # 10. LTO CONFIGURATION
+          # ==========================================
           disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
           case "${{ inputs.lto_mode }}" in
               full) enable_cfg LTO LTO_CLANG LTO_CLANG_FULL ;;
