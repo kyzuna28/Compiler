@@ -70,17 +70,17 @@ on:
           - "false"
           - "true"
       custom_tweaks:
-        description: 'Custom Tweaks (patch/ Dir, cth: lz4.patch, api.patch)'
+        description: 'Custom Tweaks (patch/.sh/ Dir, cth: lz4.patch, api.patch)'
         default: 'none'
         required: false
         type: string
       custom_hooks_patch:
-        description: 'Custom Hook Patches (Root Dir, cth: hook16.patch)'
+        description: 'Custom Hook Patches/.sh (Root Dir, cth: hook16.patch)'
         default: 'none'
         required: false
         type: string
       custom_sh:
-        description: 'Custom .sh Scripts (Root Dir, cth: script.sh)'
+        description: 'Custom .sh Scripts/Patch (Root Dir, cth: script.sh)'
         default: 'none'
         required: false
         type: string
@@ -190,17 +190,17 @@ jobs:
           disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
 
           # ==========================================
-          # 5. TWEAKS (*.patch / *.sh dan exit jika gagal)
+          # 5. TWEAKS (*.patch / *.sh dari folder patch/)
           # ==========================================
           if [[ "${{ inputs.custom_tweaks }}" != "none" && -n "${{ inputs.custom_tweaks }}" ]]; then
               echo "🛠️ [TWEAKS] Menerapkan Custom Tweaks dari folder patch/..."
               IFS=',' read -ra TWEAKS <<< "${{ inputs.custom_tweaks }}"
               for tweak in "${TWEAKS[@]}"; do
-                  tweak=$(echo "$tweak" | xargs)
-                  echo "⬇️ Mengunduh $tweak..."
-                  wget -q "$REPO_RAW/patch/$tweak" -O "$tweak"
+                  tweak=$(echo "$tweak" | xargs) # Hapus spasi berlebih
+                  [[ -z "$tweak" ]] && continue
                   
-                  if [ -f "$tweak" ]; then
+                  echo "⬇️ Mengunduh $tweak..."
+                  if wget -q "$REPO_RAW/patch/$tweak" -O "$tweak"; then
                       if [[ "$tweak" == *.patch ]]; then
                           echo "🩹 Menerapkan patch $tweak..."
                           patch -p1 < "$tweak" || { echo "❌ [FATAL] Gagal menerapkan patch $tweak! Proses dihentikan."; exit 1; }
@@ -212,7 +212,7 @@ jobs:
                           echo "❌ [FATAL] Ekstensi file $tweak tidak didukung! Gunakan .patch atau .sh."; exit 1;
                       fi
                   else
-                      echo "❌ [FATAL] Gagal mengunduh $tweak. Pastikan nama benar!"; exit 1;
+                      echo "❌ [FATAL] Gagal mengunduh $tweak. Pastikan nama/path benar!"; exit 1;
                   fi
               done
           fi
@@ -282,15 +282,24 @@ jobs:
           # 8. HOOK (Custom .patch dan .sh dari repo utama)
           # ==========================================
           if [[ "${{ inputs.custom_hooks_patch }}" != "none" && -n "${{ inputs.custom_hooks_patch }}" ]]; then
-              echo "🪝 [HOOK] Menerapkan Custom Hook Patches (.patch)..."
+              echo "🪝 [HOOK] Menerapkan Custom Hook Patches dari Root Dir..."
               IFS=',' read -ra HOOKS <<< "${{ inputs.custom_hooks_patch }}"
               for hook in "${HOOKS[@]}"; do
                   hook=$(echo "$hook" | xargs)
+                  [[ -z "$hook" ]] && continue
+                  
                   echo "⬇️ Mengunduh $hook..."
-                  wget -q "$REPO_RAW/$hook" -O "$hook"
-                  if [ -f "$hook" ]; then
-                      echo "🩹 Menerapkan patch $hook..."
-                      patch -p1 < "$hook" || { echo "❌ [FATAL] Gagal menerapkan patch $hook! Proses berhenti."; exit 1; }
+                  if wget -q "$REPO_RAW/$hook" -O "$hook"; then
+                      if [[ "$hook" == *.patch ]]; then
+                          echo "🩹 Menerapkan patch $hook..."
+                          patch -p1 < "$hook" || { echo "❌ [FATAL] Gagal menerapkan patch $hook! Proses berhenti."; exit 1; }
+                      elif [[ "$hook" == *.sh ]]; then
+                          echo "🚀 Menjalankan script $hook..."
+                          chmod +x "$hook"
+                          bash "$hook" || { echo "❌ [FATAL] Script $hook gagal! Proses berhenti."; exit 1; }
+                      else
+                          echo "❌ [FATAL] Ekstensi file $hook tidak didukung! Gunakan .patch atau .sh."; exit 1;
+                      fi
                   else
                       echo "❌ [FATAL] Gagal mengunduh $hook. Pastikan nama benar!"; exit 1;
                   fi
@@ -298,16 +307,24 @@ jobs:
           fi
 
           if [[ "${{ inputs.custom_sh }}" != "none" && -n "${{ inputs.custom_sh }}" ]]; then
-              echo "📜 [HOOK] Mengeksekusi Custom Scripts (.sh)..."
+              echo "📜 [HOOK] Mengeksekusi Custom Scripts dari Root Dir..."
               IFS=',' read -ra SCRIPTS <<< "${{ inputs.custom_sh }}"
               for script in "${SCRIPTS[@]}"; do
                   script=$(echo "$script" | xargs)
+                  [[ -z "$script" ]] && continue
+                  
                   echo "⬇️ Mengunduh $script..."
-                  wget -q "$REPO_RAW/$script" -O "$script"
-                  if [ -f "$script" ]; then
-                      echo "🚀 Menjalankan script $script..."
-                      chmod +x "$script"
-                      bash "$script" || { echo "❌ [FATAL] Terjadi error saat mengeksekusi $script! Proses berhenti."; exit 1; }
+                  if wget -q "$REPO_RAW/$script" -O "$script"; then
+                      if [[ "$script" == *.patch ]]; then
+                          echo "🩹 Menerapkan patch $script..."
+                          patch -p1 < "$script" || { echo "❌ [FATAL] Gagal menerapkan patch $script! Proses berhenti."; exit 1; }
+                      elif [[ "$script" == *.sh ]]; then
+                          echo "🚀 Menjalankan script $script..."
+                          chmod +x "$script"
+                          bash "$script" || { echo "❌ [FATAL] Terjadi error saat mengeksekusi $script! Proses berhenti."; exit 1; }
+                      else
+                          echo "❌ [FATAL] Ekstensi file $script tidak didukung! Gunakan .patch atau .sh."; exit 1;
+                      fi
                   else
                       echo "❌ [FATAL] Gagal mengunduh $script. Pastikan nama benar!"; exit 1;
                   fi
