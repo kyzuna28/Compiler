@@ -203,7 +203,7 @@ jobs:
           patch -p1 < hooksultra.patch || true
           
           echo "📩 [SUKI-ULTRA] Memasang driver SUKI-ULTRA..."
-          curl -LSs https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh | bash -s main
+          curl -LSs https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh | bash -s builtin
           
           echo "⚙️ [SUKI-ULTRA] Menyesuaikan defconfig..."
           enable_cfg KSU KSU_MANUAL_HOOK
