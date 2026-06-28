@@ -207,6 +207,7 @@ jobs:
           
           echo "⚙️ [SUKI-ULTRA] Menyesuaikan defconfig..."
           enable_cfg KSU KSU_MANUAL_HOOK
+          disable_cfg KSU_SUSFS KSU_SUSFS_SUS_PATH KSU_SUSFS_SUS_MOUNT KSU_SUSFS_SUS_KSTAT KSU_SUSFS_SPOOF_UNAME KSU_SUSFS_ENABLE_LOG KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG KSU
           echo "💨 [SUKI-ULTRA] Sukses menerapkan kustomisasi SUKI-ULTRA!"
           
         else
