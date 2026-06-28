@@ -1,18 +1,3 @@
-From f7a01994e35abd48c2625a2c00177b98fc550df3 Mon Sep 17 00:00:00 2001
-From: kyzuna28 <dzakysptr28@gmail.com>
-Date: Thu, 25 Jun 2026 23:01:30 +0700
-Subject: [PATCH] hook vip
-
----
- drivers/input/input.c | 12 ++++++++++++
- fs/exec.c             | 16 ++++++++++++++++
- fs/open.c             | 12 ++++++++++++
- fs/read_write.c       | 11 +++++++++++
- fs/stat.c             | 29 ++++++++++++++++++++++++++++-
- kernel/reboot.c       |  9 +++++++++
- kernel/sys.c          |  7 +++++++
- 7 files changed, 95 insertions(+), 1 deletion(-)
-
 diff --git a/drivers/input/input.c b/drivers/input/input.c
 index 378717d1b..9959b78ff 100644
 --- a/drivers/input/input.c
