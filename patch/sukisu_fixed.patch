@@ -1,0 +1,76 @@
+--- a/drivers/kernelsu/supercalls.c	2026-03-05 17:51:14.080278113 +0800
++++ b/drivers/kernelsu/supercalls.c	2026-03-05 17:33:04.959980382 +0800
+@@ -906,13 +906,9 @@
+ 	KSU_IOCTL(SET_SEPOLICY, "SET_SEPOLICY", do_set_sepolicy, only_root),
+ 	KSU_IOCTL(CHECK_SAFEMODE, "CHECK_SAFEMODE", do_check_safemode,
+ 		  always_allow),
+-	KSU_IOCTL(GET_ALLOW_LIST, "GET_ALLOW_LIST", do_get_allow_list,
++	KSU_IOCTL(NEW_GET_ALLOW_LIST, "NEW_GET_ALLOW_LIST", do_new_get_allow_list,
+ 		  manager_or_root),
+-	KSU_IOCTL(GET_DENY_LIST, "GET_DENY_LIST", do_get_deny_list,
+-		  manager_or_root),
+-	KSU_IOCTL(KSU_IOCTL_NEW_GET_ALLOW_LIST, "NEW_GET_ALLOW_LIST", do_new_get_allow_list,
+-		  manager_or_root),
+-	KSU_IOCTL(KSU_IOCTL_NEW_GET_DENY_LIST, "NEW_GET_DENY_LIST", do_new_get_deny_list,
++	KSU_IOCTL(NEW_GET_DENY_LIST, "NEW_GET_DENY_LIST", do_new_get_deny_list,
+ 		  manager_or_root),
+ 	KSU_IOCTL(UID_GRANTED_ROOT, "UID_GRANTED_ROOT", do_uid_granted_root,
+ 		  manager_or_root),
+--- a/drivers/kernelsu/allowlist.c	2026-03-05 18:08:17.554061842 +0800
++++ b/drivers/kernelsu/allowlist.c	2026-03-05 18:04:56.247941429 +0800
+@@ -410,12 +410,12 @@
+ 	}
+ 
+ 	// store magic and version
+-	if (kernel_write(fp, &magic, sizeof(magic), &off) != sizeof(magic)) {
++	if (ksu_kernel_write_compat(fp, &magic, sizeof(magic), &off) != sizeof(magic)) {
+ 		pr_err("save_allow_list write magic failed.\n");
+ 		goto close_file;
+ 	}
+ 
+-	if (kernel_write(fp, &version, sizeof(version), &off) != sizeof(version)) {
++	if (ksu_kernel_write_compat(fp, &version, sizeof(version), &off) != sizeof(version)) {
+ 		pr_err("save_allow_list write version failed.\n");
+ 		goto close_file;
+ 	}
+@@ -425,7 +425,7 @@
+ 		pr_info("save allow list, name: %s uid :%d, allow: %d\n",
+ 				p->profile.key, p->profile.current_uid, p->profile.allow_su);
+ 
+-		kernel_write(fp, &p->profile, sizeof(p->profile), &off);
++		ksu_kernel_write_compat(fp, &p->profile, sizeof(p->profile), &off);
+ 	}
+ 	mutex_unlock(&allowlist_mutex);
+ 
+@@ -483,13 +483,13 @@
+ 	}
+ 
+ 	// verify magic
+-	if (kernel_read(fp, &magic, sizeof(magic), &off) != sizeof(magic) ||
++	if (ksu_kernel_read_compat(fp, &magic, sizeof(magic), &off) != sizeof(magic) ||
+ 		magic != FILE_MAGIC) {
+ 		pr_err("allowlist file invalid: %d!\n", magic);
+ 		goto exit;
+ 	}
+ 
+-	if (kernel_read(fp, &version, sizeof(version), &off) != sizeof(version)) {
++	if (ksu_kernel_read_compat(fp, &version, sizeof(version), &off) != sizeof(version)) {
+ 		pr_err("allowlist read version: %d failed\n", version);
+ 		goto exit;
+ 	}
+@@ -499,7 +499,7 @@
+ 	while (true) {
+ 		struct app_profile profile;
+ 
+-		ret = kernel_read(fp, &profile, sizeof(profile), &off);
++		ret = ksu_kernel_read_compat(fp, &profile, sizeof(profile), &off);
+ 
+ 		if (ret <= 0) {
+ 			pr_info("load_allow_list read err: %zd\n", ret);
+@@ -666,4 +666,4 @@
+ 	ksu_persistent_allow_list();
+ 	pr_info("pending_root: UID=%d removed and persist updated\n", uid);
+ }
+-#endif
+\ 文件末尾没有换行符
++#endif

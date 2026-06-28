@@ -1,0 +1,57 @@
+--- a/kernel/sucompat.c	2025-12-21 19:40:36.868477068 +0800
++++ b/kernel/sucompat.c	2025-12-21 19:37:53.701480695 +0800
+@@ -192,7 +192,7 @@
+ {
+ #if __SULOG_GATE
+ 	ksu_sulog_report_syscall(current_uid().val, NULL, "faccessat",
+-				 is_su_allowed());
++				 is_su_allowed() ? "1" : "0");
+ #endif
+ 	return ksu_sucompat_user_common(filename_user, "faccessat", false);
+ }
+@@ -201,7 +201,7 @@
+ {
+ #if __SULOG_GATE
+ 	ksu_sulog_report_syscall(current_uid().val, NULL, "newfstatat",
+-				 is_su_allowed());
++				 is_su_allowed() ? "1" : "0");
+ #endif
+ 	return ksu_sucompat_user_common(filename_user, "newfstatat", false);
+ }
+@@ -213,7 +213,7 @@
+ #if __SULOG_GATE
+ 	ksu_sulog_report_syscall(current_uid().val, NULL, "execve", su_path);
+ 	ksu_sulog_report_su_attempt(current_uid().val, NULL, su_path,
+-				    is_su_allowed());
++				    is_su_allowed() ? "1" : "0");
+ #endif
+ 	return handle_execve_sucompat(filename_user);
+ }
+@@ -238,7 +238,7 @@
+ #if __SULOG_GATE
+ 	ksu_sulog_report_syscall(current_uid().val, NULL, "execveat", su_path);
+ 	ksu_sulog_report_su_attempt(current_uid().val, NULL, su_path,
+-				    is_su_allowed());
++				    is_su_allowed() ? "1" : "0");
+ #endif
+ 
+ 	pr_info("do_execveat_common su found\n");
+
+--- a/kernel/su_mount_ns.c	2025-12-21 19:40:36.868477068 +0800
++++ b/kernel/su_mount_ns.c	2025-12-21 19:35:37.321795895 +0800
+@@ -117,7 +117,15 @@
+ 		goto out;
+ 	}
+ 	struct path ns_path;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
+ 	long ret = ns_get_path(&ns_path, pid1_task, &mntns_operations);
++#else
++	long ret = 0;
++	ns_get_path(&ns_path, pid1_task, &mntns_operations);
++	if (!ns_path.dentry) {
++		ret = -1;
++	}
++#endif
+ 	put_task_struct(pid1_task);
+ 	if (ret) {
+ 		pr_warn("failed get path for init mount namespace: %ld\n", ret);
