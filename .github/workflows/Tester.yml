@@ -253,7 +253,7 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master
             disable_cfg KSU_KPROBES_KSUD
 
-          if [ "$KSU_CHOICE" == "mambosu" ]; then
+          elif [ "$KSU_CHOICE" == "mambosu" ]; then
             echo "🚀 [MAMBOSU] Memasang mambosu (raplivx)..."
             curl -LSs "https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh" | bash -s xxksu
             disable_cfg KSU_KPROBES_KSUD
