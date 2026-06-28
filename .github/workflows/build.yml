@@ -167,6 +167,17 @@ jobs:
               for tool in ar nm objcopy objdump; do ln -sf /usr/bin/llvm-$tool-21 tc/bin/llvm-$tool; done
               ;;
           esac
+          
+      - name: Clone Kernel Source & Init Submodules
+        run: |
+          echo "⬇️ Mengkloning repo kernel dari: ${{ inputs.kernel-url }} (Branch: ${{ inputs.kernel-branch }})"
+          git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir || { echo "❌ [FATAL] Gagal clone repo! Cek URL atau Branch."; exit 1; }
+          
+          echo "📂 Masuk ke folder kernel-dir..."
+          cd kernel-dir || { echo "❌ [FATAL] Folder kernel-dir tidak ditemukan!"; exit 1; }
+          
+          echo "🔄 Update submodules (jika ada)..."
+          git submodule update --init --recursive
 
       - name: Apply Kernel Config & Root Solutions
         run: |
@@ -231,7 +242,6 @@ jobs:
           # ==========================================
           # 5. CUSTOM TWEAKS (PRE-ROOT)
           # ==========================================
-          # Dijalankan SEBELUM instalasi KSU agar base kernel siap
           process_custom_files "${{ inputs.custom_tweaks }}" "TWEAKS"
 
           # ==========================================
@@ -275,22 +285,18 @@ jobs:
               fi
 
               echo "⚙️ [KSU] Menerapkan Defconfig khusus untuk $KSU_FORK..."
-              # Base KSU config untuk semua
               enable_cfg KSU KALLSYMS KALLSYMS_ALL
               
-              # 1. Logika Manual Hook (rsuntk, next, resukisu)
               if [[ "$KSU_FORK" == "rsuntk" || "$KSU_FORK" == "next" || "$KSU_FORK" == "resukisu" ]]; then
                   if [[ "$SUSFS_STATE" != "true" ]]; then
                       enable_cfg KSU_MANUAL_HOOK
                   fi
               fi
               
-              # 2. Logika xxksu
               if [[ "$KSU_FORK" == "xxksu" ]]; then
                   disable_cfg KSU_KPROBES_KSUD
               fi
 
-              # 3. Logika khusus sukisu & resukisu
               if [[ "$KSU_FORK" == "sukisu" || "$KSU_FORK" == "resukisu" ]]; then
                   if [[ "$SUSFS_STATE" != "true" ]]; then
                       disable_cfg KSU_SUSFS
@@ -299,7 +305,6 @@ jobs:
                   fi
               fi
               
-              # 4. Pengecualian logika untuk thre (tetap dipertahankan)
               if [[ "$KSU_FORK" == "thre" ]]; then
                   if [[ "$SUSFS_STATE" != "true" ]]; then
                       enable_cfg KSU_MANUAL_HOOK
@@ -313,7 +318,6 @@ jobs:
           # ==========================================
           # 8. CUSTOM HOOKS & SCRIPTS (POST-ROOT)
           # ==========================================
-          # Dijalankan SETELAH KSU/SuSFS tertanam di kernel source
           process_custom_files "${{ inputs.custom_hooks_patch }}" "HOOKS"
           process_custom_files "${{ inputs.custom_sh }}" "SCRIPTS"
           
@@ -336,27 +340,22 @@ jobs:
               fi
               
               sed -i 's/^static const struct file_operations sel_handle_status_ops = {/const struct file_operations sel_handle_status_ops = {/' security/selinux/selinuxfs.c
-              echo "✅ [NO-KPROBES] Removed write_op & sel_handle_status_ops static state."
-
+              
               if [ "$FIRST_VERSION" -lt 5 ] && [ "$SECOND_VERSION" -lt 15 ]; then
                   if grep -q "sel_mutex" "security/selinux/selinuxfs.c" >/dev/null 2>&1; then
                       sed -i 's/^static DEFINE_MUTEX(sel_mutex)/DEFINE_MUTEX(sel_mutex)/' security/selinux/selinuxfs.c
-                      echo "✅ [NO-KPROBES] Removed sel_mutex static state."
                   fi
                   if grep -q "selinux_status_page" "security/selinux/ss/status.c" >/dev/null 2>&1; then
                       sed -i 's/^static struct page \*selinux_status_page/struct page *selinux_status_page/' security/selinux/ss/status.c
-                      echo "✅ [NO-KPROBES] Removed selinux_status_page static state."
                   fi
                   if grep -q "selinux_status_lock" "security/selinux/ss/status.c" >/dev/null 2>&1; then
                       sed -i 's/^static DEFINE_MUTEX(selinux_status_lock)/DEFINE_MUTEX(selinux_status_lock)/' security/selinux/ss/status.c
-                      echo "✅ [NO-KPROBES] Removed selinux_status_lock static state."
                   fi
               fi
 
               if [ "$FIRST_VERSION" -lt 4 ] && [ "$SECOND_VERSION" -lt 19 ]; then
                   if grep -q "selinux_status_page" "security/selinux/hooks.c" >/dev/null 2>&1; then
                       sed -i 's/^static struct security_operations selinux_ops/struct security_operations selinux_ops/' security/selinux/hooks.c
-                      echo "✅ [NO-KPROBES] Removed selinux_ops static state."
                   fi
               fi
               echo "✨ [NO-KPROBES] Bypass SELinux selesai!"
@@ -456,10 +455,8 @@ jobs:
           echo "🔍 [CEK] Memverifikasi hasil packaging AnyKernel3..."
           if ls AnyKernel3/Image* 1> /dev/null 2>&1; then
             echo "✨ [SUKSES] File kernel berhasil dipaketkan ke dalam folder AnyKernel3!"
-            echo "🎉 [SELESAI] Siap untuk proses Upload."
           else
             echo "❌ [GAGAL] File Image kernel tidak ditemukan di folder AnyKernel3!"
-            echo "💀 [FATAL] Terjadi kesalahan saat memindahkan kernel build. Membatalkan proses..."
             exit 1
           fi
           
@@ -474,4 +471,3 @@ jobs:
           path: AnyKernel3/
           compression-level: 9
           if-no-files-found: error
-          
