@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
 name: Tes Build
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }}
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }} | ${{ custom_tweaks }} | ${{ custom_hooks }}
 
 on:
   workflow_dispatch:
@@ -48,19 +48,30 @@ on:
         - no lto
         - full
         - thin
+     custom_tweaks:
+        description: 'Tweak/Patch Kernel (.patch / .sh). Pisahkan dengan koma.'
+        default: 'none'
+        required: false
+        type: string
       kernelsu:
-        description: 'Mode Root (False = APatch)'
+        description: 'Pilih Root Method atau Fork KSU'
         default: 'none'
         required: true
         type: choice
         options:
-        - manager-3.0
-        - all-3.1
-        - next-3.2
-        - "resukisu"
-        - "suki-ultra"
-        - "apatch"
         - "none"
+        - "apatch"
+        - "xxksu"
+        - "rsuntk"
+        - "sukisu"
+        - "next"
+        - "resukisu"
+        - "thre"
+      custom_hooks:
+        description: 'sukisu/xxksu no manual hook'
+        default: 'none'
+        required: false
+        type: string
       version_hash:
         description: 'Include Version Hash'
         default: 'no hash'
@@ -170,62 +181,117 @@ jobs:
         echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
         sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
 
-        # Config Helpers
+        # ==========================================
+        # FUNGSI & HELPER CONFIG
+        # ==========================================
         enable_cfg() { for cfg in "$@"; do echo "CONFIG_$cfg=y" >> "$TARGET_CONFIG"; done; }
         disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
 
-        # KSU / APatch / None Configurations
-        if [ "${{ inputs.kernelsu }}" == "none" ]; then
+        REPO_RAW="https://raw.githubusercontent.com/kyzuna28/Compiler/main"
+
+        process_custom_files() {
+            local input_string="$1"
+            local step_name="$2"
+
+            if [[ "$input_string" != "none" && -n "$input_string" ]]; then
+                echo "🪝 [$step_name] Memproses: $input_string..."
+                IFS=',' read -ra FILES <<< "$input_string"
+                for file in "${FILES[@]}"; do
+                    file=$(echo "$file" | xargs) # Bersihkan spasi
+                    [[ -z "$file" ]] && continue
+                    
+                    echo "⬇️ Mencari $file..."
+                    # Cari di Root Dir dulu, kalau gagal cari di folder patch/
+                    if wget -q "$REPO_RAW/$file" -O "$file"; then
+                        echo "✅ Ditemukan di Root Dir."
+                    elif wget -q "$REPO_RAW/patch/$file" -O "$file"; then
+                        echo "✅ Ditemukan di folder patch/."
+                    else
+                        echo "❌ [FATAL] Gagal mengunduh $file! File tidak ditemukan di Root maupun folder patch/."; exit 1;
+                    fi
+
+                    # Eksekusi sesuai ekstensi
+                    if [[ "$file" == *.patch ]]; then
+                        echo "🩹 Menerapkan patch $file..."
+                        patch -p1 < "$file" || { echo "❌ [FATAL] Gagal menerapkan patch $file! Proses berhenti."; exit 1; }
+                    elif [[ "$file" == *.sh ]]; then
+                        echo "🚀 Menjalankan script $file..."
+                        chmod +x "$file"
+                        bash "$file" || { echo "❌ [FATAL] Script $file gagal! Proses berhenti."; exit 1; }
+                    else
+                        echo "❌ [FATAL] Ekstensi $file tidak didukung! Gunakan .patch atau .sh."; exit 1;
+                    fi
+                done
+            fi
+        }
+
+        # ==========================================
+        # STEP 1: CUSTOM TWEAKS (PRE-ROOT)
+        # ==========================================
+        process_custom_files "${{ inputs.custom_tweaks }}" "TWEAKS"
+
+        # ==========================================
+        # STEP 2: ROOT KERNELSU / APATCH
+        # ==========================================
+        KSU_CHOICE="${{ inputs.kernelsu }}"
+
+        if [ "$KSU_CHOICE" == "none" ]; then
           echo "🧹 [ROOT] Mode 'none' dipilih. Skip instalasi Root (Kernel bersih tanpa patch/ksu/apatch)."
           
-        elif [ "${{ inputs.kernelsu }}" == "apatch" ]; then
+        elif [ "$KSU_CHOICE" == "apatch" ]; then
           echo "🧬 [APATCH] Mengonfigurasi APatch..."
           enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
           echo "✅ [APATCH] Selesai menerapkan config!"
           
-        elif [ "${{ inputs.kernelsu }}" == "resukisu" ]; then
-          echo "🚀 [RESUKISU] Memulai injeksi ReSukiSU (Mode Standar)..."
-          echo "📥 [RESUKISU] Mengunduh patch resuhooks dari GitHub repo Compiler..."
-          wget -q https://raw.githubusercontent.com/kyzuna28/Compiler/main/resuhooks.patch
-          patch -p1 < resuhooks.patch || true
-          
-          echo "📥 [RESUKISU] Memasang driver ReSukiSU..."
-          curl -LSs https://raw.githubusercontent.com/resukisu/ReSukiSU/main/kernel/setup.sh | bash -s main
-          
-          echo "⚙️ [RESUKISU] Menyesuaikan defconfig..."
-          enable_cfg KSU KSU_MANUAL_HOOK
-          echo "✨ [RESUKISU] Sukses menerapkan kustomisasi ReSukiSU!"
-
-        elif [ "${{ inputs.kernelsu }}" == "suki-ultra" ]; then
-          echo "☢️ [SUKI-ULTRA] Memulai injeksi SUKI-ULTRA (Mode Standar)..."
-          echo "📩 [SUKI-ULTRA] Mengunduh patch hooksultra dari GitHub repo Compiler..."
-          wget -q https://raw.githubusercontent.com/kyzuna28/Compiler/main/hooksultra.patch
-          patch -p1 < hooksultra.patch || true
-          
-          echo "📩 [SUKI-ULTRA] Memasang driver SUKI-ULTRA..."
-          curl -LSs https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh | bash -s master
-          
-          echo "⚙️ [SUKI-ULTRA] Menyesuaikan defconfig..."
-          enable_cfg KSU KSU_MANUAL_HOOK
-          echo "💨 [SUKI-ULTRA] Sukses menerapkan kustomisasi SUKI-ULTRA!"
-          
         else
-          echo "🚀 [KSU] Memulai injeksi KernelSU (Standard)..."
-          echo "📥 [KSU] Mengunduh & menerapkan patch manual hook universal..."
-          wget -q https://raw.githubusercontent.com/rksuorg/kernel_patches/refs/heads/master/manual_hook/kernel-4.4_4.9.patch
-          patch -p1 < kernel-4.4_4.9.patch || true
+          # Pastikan KSU nyala untuk semua varian di bawah ini
+          enable_cfg KSU
           
-          case "${{ inputs.kernelsu }}" in
-            manager-3.0) echo "📥 [KSU] Memasang Manager 3.0..."; curl -s https://raw.githubusercontent.com/ThRE-Team/Next-v3/refs/heads/main/setup.sh | bash ;;
-            all-3.1) echo "📥 [KSU] Memasang Next (Main)..."; curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main ;;
-            next-3.2) echo "📥 [KSU] Memasang Next v3.2.0..."; curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s v3.2.0 ;;
-          esac
-          
-          echo "⚙️ [KSU] Menyesuaikan defconfig kernel..."
-          enable_cfg KSU KSU_MANUAL_HOOK
-          disable_cfg KPROBES HAVE_KPROBES
-          echo "✨ [KSU] Sukses menerapkan KernelSU!"
+          if [ "$KSU_CHOICE" == "xxksu" ]; then
+            echo "🚀 [XXKSU] Memasang xxksu (backslashxx)..."
+            curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master
+            disable_cfg KSU_KPROBES_KSUD
+
+          elif [ "$KSU_CHOICE" == "rsuntk" ]; then
+            echo "🚀 [RSUNTK] Memasang rsuntk..."
+            curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/refs/heads/main/kernel/setup.sh" | bash -s main
+            enable_cfg KSU_MANUAL_HOOK
+
+          elif [ "$KSU_CHOICE" == "sukisu" ]; then
+            echo "🚀 [SUKISU] Memasang SukiSU-Ultra..."
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s builtin
+            disable_cfg KSU_SUSFS
+
+          elif [ "$KSU_CHOICE" == "next" ]; then
+            echo "🚀 [NEXT] Memasang KernelSU-Next (Legacy)..."
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/refs/heads/legacy/kernel/setup.sh" | bash -s legacy
+            enable_cfg KSU_MANUAL_HOOK
+
+          elif [ "$KSU_CHOICE" == "resukisu" ]; then
+            echo "🚀 [RESUKISU] Memasang ReSukiSU..."
+            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s main
+            enable_cfg KSU_MANUAL_HOOK
+            disable_cfg KSU_SUSFS
+            
+          elif [ "$KSU_CHOICE" == "thre" ]; then
+            echo "🚀 [THRE-NEXT] Memulai injeksi KernelSU (thre)..."
+            echo "📥 [THRE-NEXT] Memasang Next (Main)..."
+            curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main
+            enable_cfg KSU_MANUAL_HOOK
+            disable_cfg KPROBES HAVE_KPROBES
+
+          else
+            echo "❌ [ERROR] Fork Root tidak dikenali: $KSU_CHOICE"
+            exit 1
+          fi
+
+          echo "✨ [ROOT] Sukses menerapkan kustomisasi untuk $KSU_CHOICE!"
         fi
+
+        # ==========================================
+        # STEP 3: CUSTOM HOOKS (POST-ROOT)
+        # ==========================================
+        process_custom_files "${{ inputs.custom_hooks }}" "HOOKS"
 
         # LTO Configuration
         disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
