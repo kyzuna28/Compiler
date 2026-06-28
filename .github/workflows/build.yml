@@ -191,33 +191,48 @@ jobs:
           enable_cfg() { for cfg in "$@"; do echo "CONFIG_$cfg=y" >> "$TARGET_CONFIG"; done; }
           disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
 
-          # ==========================================
-          # 5. TWEAKS (*.patch / *.sh dari folder patch/)
-          # ==========================================
-          if [[ "${{ inputs.custom_tweaks }}" != "none" && -n "${{ inputs.custom_tweaks }}" ]]; then
-              echo "🛠️ [TWEAKS] Menerapkan Custom Tweaks dari folder patch/..."
-              IFS=',' read -ra TWEAKS <<< "${{ inputs.custom_tweaks }}"
-              for tweak in "${TWEAKS[@]}"; do
-                  tweak=$(echo "$tweak" | xargs)
-                  [[ -z "$tweak" ]] && continue
-                  
-                  echo "⬇️ Mengunduh $tweak..."
-                  if wget -q "$REPO_RAW/patch/$tweak" -O "$tweak"; then
-                      if [[ "$tweak" == *.patch ]]; then
-                          echo "🩹 Menerapkan patch $tweak..."
-                          patch -p1 < "$tweak" || { echo "❌ [FATAL] Gagal menerapkan patch $tweak! Proses dihentikan."; exit 1; }
-                      elif [[ "$tweak" == *.sh ]]; then
-                          echo "📜 Menjalankan script $tweak..."
-                          chmod +x "$tweak"
-                          bash "$tweak" || { echo "❌ [FATAL] Script $tweak gagal! Proses dihentikan."; exit 1; }
+          # Fungsi otomatis nyari file di Root Dir atau folder patch/ dan eksekusi
+          process_custom_files() {
+              local input_string="$1"
+              local step_name="$2"
+
+              if [[ "$input_string" != "none" && -n "$input_string" ]]; then
+                  echo "🪝 [$step_name] Memproses: $input_string..."
+                  IFS=',' read -ra FILES <<< "$input_string"
+                  for file in "${FILES[@]}"; do
+                      file=$(echo "$file" | xargs) # Bersihkan spasi
+                      [[ -z "$file" ]] && continue
+                      
+                      echo "⬇️ Mencari $file..."
+                      # Coba ambil dari Root Dir dulu, kalau gagal cari di folder patch/
+                      if wget -q "$REPO_RAW/$file" -O "$file"; then
+                          echo "✅ Ditemukan di Root Dir."
+                      elif wget -q "$REPO_RAW/patch/$file" -O "$file"; then
+                          echo "✅ Ditemukan di folder patch/."
                       else
-                          echo "❌ [FATAL] Ekstensi file $tweak tidak didukung! Gunakan .patch atau .sh."; exit 1;
+                          echo "❌ [FATAL] Gagal mengunduh $file! File tidak ditemukan di Root maupun folder patch/."; exit 1;
                       fi
-                  else
-                      echo "❌ [FATAL] Gagal mengunduh $tweak. Pastikan nama/path benar!"; exit 1;
-                  fi
-              done
-          fi
+
+                      # Eksekusi sesuai ekstensi
+                      if [[ "$file" == *.patch ]]; then
+                          echo "🩹 Menerapkan patch $file..."
+                          patch -p1 < "$file" || { echo "❌ [FATAL] Gagal menerapkan patch $file! Proses berhenti."; exit 1; }
+                      elif [[ "$file" == *.sh ]]; then
+                          echo "🚀 Menjalankan script $file..."
+                          chmod +x "$file"
+                          bash "$file" || { echo "❌ [FATAL] Script $file gagal! Proses berhenti."; exit 1; }
+                      else
+                          echo "❌ [FATAL] Ekstensi $file tidak didukung! Gunakan .patch atau .sh."; exit 1;
+                      fi
+                  done
+              fi
+          }
+
+          # ==========================================
+          # 5. CUSTOM TWEAKS (PRE-ROOT)
+          # ==========================================
+          # Dijalankan SEBELUM instalasi KSU agar base kernel siap
+          process_custom_files "${{ inputs.custom_tweaks }}" "TWEAKS"
 
           # ==========================================
           # 6. ROOT & 7. SUSFS
@@ -274,57 +289,13 @@ jobs:
           fi
 
           # ==========================================
-          # 8. HOOK (Custom .patch dan .sh dari Root Dir)
+          # 8. CUSTOM HOOKS & SCRIPTS (POST-ROOT)
           # ==========================================
-          if [[ "${{ inputs.custom_hooks_patch }}" != "none" && -n "${{ inputs.custom_hooks_patch }}" ]]; then
-              echo "🪝 [HOOK] Menerapkan Custom Hook Patches dari Root Dir..."
-              IFS=',' read -ra HOOKS <<< "${{ inputs.custom_hooks_patch }}"
-              for hook in "${HOOKS[@]}"; do
-                  hook=$(echo "$hook" | xargs)
-                  [[ -z "$hook" ]] && continue
-                  
-                  echo "⬇️ Mengunduh $hook..."
-                  if wget -q "$REPO_RAW/$hook" -O "$hook"; then
-                      if [[ "$hook" == *.patch ]]; then
-                          echo "🩹 Menerapkan patch $hook..."
-                          patch -p1 < "$hook" || { echo "❌ [FATAL] Gagal menerapkan patch $hook! Proses berhenti."; exit 1; }
-                      elif [[ "$hook" == *.sh ]]; then
-                          echo "🚀 Menjalankan script $hook..."
-                          chmod +x "$hook"
-                          bash "$hook" || { echo "❌ [FATAL] Script $hook gagal! Proses berhenti."; exit 1; }
-                      else
-                          echo "❌ [FATAL] Ekstensi file $hook tidak didukung! Gunakan .patch atau .sh."; exit 1;
-                      fi
-                  else
-                      echo "❌ [FATAL] Gagal mengunduh $hook. Pastikan nama benar!"; exit 1;
-                  fi
-              done
-          fi
-
-          if [[ "${{ inputs.custom_sh }}" != "none" && -n "${{ inputs.custom_sh }}" ]]; then
-              echo "📜 [HOOK] Mengeksekusi Custom Scripts dari Root Dir..."
-              IFS=',' read -ra SCRIPTS <<< "${{ inputs.custom_sh }}"
-              for script in "${SCRIPTS[@]}"; do
-                  script=$(echo "$script" | xargs)
-                  [[ -z "$script" ]] && continue
-                  
-                  echo "⬇️ Mengunduh $script..."
-                  if wget -q "$REPO_RAW/$script" -O "$script"; then
-                      if [[ "$script" == *.patch ]]; then
-                          echo "🩹 Menerapkan patch $script..."
-                          patch -p1 < "$script" || { echo "❌ [FATAL] Gagal menerapkan patch $script! Proses berhenti."; exit 1; }
-                      elif [[ "$script" == *.sh ]]; then
-                          echo "🚀 Menjalankan script $script..."
-                          chmod +x "$script"
-                          bash "$script" || { echo "❌ [FATAL] Terjadi error saat mengeksekusi $script! Proses berhenti."; exit 1; }
-                      else
-                          echo "❌ [FATAL] Ekstensi file $script tidak didukung! Gunakan .patch atau .sh."; exit 1;
-                      fi
-                  else
-                      echo "❌ [FATAL] Gagal mengunduh $script. Pastikan nama benar!"; exit 1;
-                  fi
-              done
-          fi
+          # Dijalankan SETELAH KSU/SuSFS tertanam di kernel source
+          process_custom_files "${{ inputs.custom_hooks_patch }}" "HOOKS"
+          process_custom_files "${{ inputs.custom_sh }}" "SCRIPTS"
+          
+          echo "✨ [PIPELINE] Semua modifikasi eksternal sukses dikonfigurasi!"
 
           # ==========================================
           # 9. NO-KPROBES SELINUX WORKAROUND
@@ -481,4 +452,4 @@ jobs:
           path: AnyKernel3/
           compression-level: 9
           if-no-files-found: error
-        
+          
