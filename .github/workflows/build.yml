@@ -258,15 +258,45 @@ jobs:
               echo "🚀 [KSU] Menyiapkan integrasi untuk: $KSU_FORK"
               
               case "$KSU_FORK" in
-                  xxksu) KSU_AUTHOR="backslashxx"; KSU_NAME="KernelSU"; KSU_ORIGIN_BRANCH="master"; KSU_BRANCH="master"
-                         [[ "$SUSFS_STATE" == "true" ]] && { echo "❌ ERROR: xxksu tidak mendukung SuSFS!"; exit 1; } ;;
-                  rsuntk) KSU_AUTHOR="rsuntk"; KSU_NAME="KernelSU"; KSU_ORIGIN_BRANCH="main"; KSU_BRANCH="main"
-                         [[ "$SUSFS_STATE" == "true" ]] && { echo "❌ ERROR: rsuntk tidak mendukung SuSFS!"; exit 1; } ;;
-                  sukisu) KSU_AUTHOR="SukiSU-Ultra"; KSU_NAME="SukiSU-Ultra"; KSU_ORIGIN_BRANCH="main"; KSU_BRANCH="builtin" ;;
-                  next)   KSU_AUTHOR="KernelSU-Next"; KSU_NAME="KernelSU-Next"; KSU_ORIGIN_BRANCH="legacy"; KSU_BRANCH="legacy"
-                         [[ "$SUSFS_STATE" == "true" ]] && { echo "❌ ERROR: next (legacy) tidak mendukung SuSFS!"; exit 1; } ;;
-                  resukisu) KSU_AUTHOR="ReSukiSU"; KSU_NAME="ReSukiSU"; KSU_ORIGIN_BRANCH="main"; KSU_BRANCH="main" ;;
-                  thre)   KSU_AUTHOR="ThRE-Team"; KSU_NAME="KernelSU-Next"; KSU_ORIGIN_BRANCH="main"; KSU_BRANCH="main" ;;
+                  xxksu)
+                      KSU_AUTHOR="backslashxx"
+                      KSU_NAME="KernelSU"
+                      KSU_ORIGIN_BRANCH="master"
+                      KSU_BRANCH="master"
+                      [[ "$SUSFS_STATE" == "true" ]] && { echo "❌ ERROR: xxksu tidak mendukung SuSFS!"; exit 1; }
+                      ;;
+                  rsuntk)
+                      KSU_AUTHOR="rsuntk"
+                      KSU_NAME="KernelSU"
+                      KSU_ORIGIN_BRANCH="main"
+                      KSU_BRANCH="main"
+                      [[ "$SUSFS_STATE" == "true" ]] && { echo "❌ ERROR: rsuntk tidak mendukung SuSFS!"; exit 1; }
+                      ;;
+                  sukisu)
+                      KSU_AUTHOR="SukiSU-Ultra"
+                      KSU_NAME="SukiSU-Ultra"
+                      KSU_ORIGIN_BRANCH="main"
+                      KSU_BRANCH="builtin"
+                      ;;
+                  next)
+                      KSU_AUTHOR="KernelSU-Next"
+                      KSU_NAME="KernelSU-Next"
+                      KSU_ORIGIN_BRANCH="legacy"
+                      KSU_BRANCH="legacy"
+                      [[ "$SUSFS_STATE" == "true" ]] && { echo "❌ ERROR: next (legacy) tidak mendukung SuSFS!"; exit 1; }
+                      ;;
+                  resukisu)
+                      KSU_AUTHOR="ReSukiSU"
+                      KSU_NAME="ReSukiSU"
+                      KSU_ORIGIN_BRANCH="main"
+                      KSU_BRANCH="main"
+                      ;;
+                  thre)
+                      KSU_AUTHOR="ThRE-Team"
+                      KSU_NAME="KernelSU-Next"
+                      KSU_ORIGIN_BRANCH="main"
+                      KSU_BRANCH="main"
+                      ;;
               esac
 
               echo "📥 [KSU] Mengunduh & Install $KSU_NAME via setup.sh..."
@@ -286,31 +316,38 @@ jobs:
 
               echo "⚙️ [KSU] Menerapkan Defconfig khusus untuk $KSU_FORK..."
               enable_cfg KSU
-              
-              if [[ "$KSU_FORK" == "rsuntk" || "$KSU_FORK" == "next" || "$KSU_FORK" == "resukisu" ]]; then
-                  if [[ "$SUSFS_STATE" != "true" ]]; then
-                      enable_cfg KSU_MANUAL_HOOK
-                  fi
-              fi
-              
-              if [[ "$KSU_FORK" == "xxksu" ]]; then
-                  disable_cfg KSU_KPROBES_KSUD
-              fi
 
-              if [[ "$KSU_FORK" == "sukisu" || "$KSU_FORK" == "resukisu" ]]; then
-                  if [[ "$SUSFS_STATE" != "true" ]]; then
-                      disable_cfg KSU_SUSFS
-                  elif [[ "$SUSFS_STATE" == "true" ]]; then
-                      enable_cfg KSU_SUSFS
-                  fi
-              fi
-              
-              if [[ "$KSU_FORK" == "thre" ]]; then
-                  if [[ "$SUSFS_STATE" != "true" ]]; then
-                      enable_cfg KSU_MANUAL_HOOK
-                  fi
-                  disable_cfg KPROBES HAVE_KPROBES
-              fi
+              case "$KSU_FORK" in
+                  rsuntk|next)
+                      if [[ "$SUSFS_STATE" != "true" ]]; then
+                          enable_cfg KSU_MANUAL_HOOK
+                      fi
+                      ;;
+                  resukisu)
+                      if [[ "$SUSFS_STATE" == "true" ]]; then
+                          enable_cfg KSU_SUSFS
+                      else
+                          enable_cfg KSU_MANUAL_HOOK
+                          disable_cfg KSU_SUSFS
+                      fi
+                      ;;
+                  sukisu)
+                      if [[ "$SUSFS_STATE" == "true" ]]; then
+                          enable_cfg KSU_SUSFS
+                      else
+                          disable_cfg KSU_SUSFS
+                      fi
+                      ;;
+                  xxksu)
+                      disable_cfg KSU_KPROBES_KSUD
+                      ;;
+                  thre)
+                      if [[ "$SUSFS_STATE" != "true" ]]; then
+                          enable_cfg KSU_MANUAL_HOOK
+                      fi
+                      disable_cfg KPROBES HAVE_KPROBES
+                      ;;
+              esac
 
               echo "✨ [KSU] Selesai mengatur Root!"
           fi
@@ -324,48 +361,37 @@ jobs:
           echo "✨ [PIPELINE] Semua modifikasi eksternal sukses dikonfigurasi!"
 
           # ==========================================
-          # 9. NO-KPROBES SELINUX WORKAROUND
+          # 9. NO-KPROBES SELINUX WORKAROUND (4.9 ONLY)
           # ==========================================
           if [ "${{ inputs.no_kprobes_workaround }}" == "true" ]; then
-              echo "🔓 [NO-KPROBES] Memulai bypass SELinux static state..."
-              
+              echo "🔓 [NO-KPROBES] Apply workaround for kernel 4.9..."
+
               if ! grep -rq "check_symbol_export" "drivers/kernelsu/tools/static_export_check.mk" >/dev/null 2>&1; then
-                  echo "⏭️ [NO-KPROBES] KernelSU tidak membutuhkan static export workaround. Skip."
+                  echo "⏭️ KernelSU tidak membutuhkan workaround. Skip."
               elif grep -q "^CONFIG_KALLSYMS=y" "arch/arm64/configs/${{ inputs.kernel-config }}" \
                   && grep -q "^CONFIG_KALLSYMS_ALL=y" "arch/arm64/configs/${{ inputs.kernel-config }}"; then
-                  echo "⏭️ [NO-KPROBES] KALLSYMS & KALLSYMS_ALL aktif. Skip workaround."
+                  echo "⏭️ KALLSYMS aktif. Skip workaround."
               else
-                  KERNEL_VERSION=$(head -n 3 Makefile | grep -E 'VERSION|PATCHLEVEL' | awk '{print $3}' | paste -sd '.')
-                  FIRST_VERSION=$(echo "$KERNEL_VERSION" | awk -F '.' '{print $1}')
-                  SECOND_VERSION=$(echo "$KERNEL_VERSION" | awk -F '.' '{print $2}')
-                  
-                  if grep "const write_op" "security/selinux/selinuxfs.c" >/dev/null 2>&1; then
-                      sed -i 's/static ssize_t (\*const write_op\[\])(struct file \*, char \*, size_t)/ssize_t (*const write_op[])(struct file *, char *, size_t)/' security/selinux/selinuxfs.c
-                  else
-                      sed -i 's/static ssize_t (\*write_op\[\])(struct file \*, char \*, size_t)/ssize_t (*write_op[])(struct file *, char *, size_t)/' security/selinux/selinuxfs.c
-                  fi
-                  
-                  sed -i 's/^static const struct file_operations sel_handle_status_ops = {/const struct file_operations sel_handle_status_ops = {/' security/selinux/selinuxfs.c
-                  
-                  if [ "$FIRST_VERSION" -lt 5 ] && [ "$SECOND_VERSION" -lt 15 ]; then
-                      if grep -q "sel_mutex" "security/selinux/selinuxfs.c" >/dev/null 2>&1; then
-                          sed -i 's/^static DEFINE_MUTEX(sel_mutex)/DEFINE_MUTEX(sel_mutex)/' security/selinux/selinuxfs.c
-                      fi
-                      if grep -q "selinux_status_page" "security/selinux/ss/status.c" >/dev/null 2>&1; then
-                          sed -i 's/^static struct page \*selinux_status_page/struct page *selinux_status_page/' security/selinux/ss/status.c
-                      fi
-                      if grep -q "selinux_status_lock" "security/selinux/ss/status.c" >/dev/null 2>&1; then
-                          sed -i 's/^static DEFINE_MUTEX(selinux_status_lock)/DEFINE_MUTEX(selinux_status_lock)/' security/selinux/ss/status.c
-                      fi
-                  fi
+                  # SELinux patch (4.9 compatible only)
+                  sed -i 's/static ssize_t (\*const write_op\[\])/ssize_t (*const write_op[])/' \
+                      security/selinux/selinuxfs.c 2>/dev/null || true
 
-                  if [ "$FIRST_VERSION" -lt 4 ] && [ "$SECOND_VERSION" -lt 19 ]; then
-                      if grep -q "selinux_status_page" "security/selinux/hooks.c" >/dev/null 2>&1; then
-                          sed -i 's/^static struct security_operations selinux_ops/struct security_operations selinux_ops/' security/selinux/hooks.c
-                      fi
-                  fi
-                  
-                  echo "✨ [NO-KPROBES] Bypass SELinux selesai!"
+                  sed -i 's/static ssize_t (\*write_op\[\])/ssize_t (*write_op[])/' \
+                      security/selinux/selinuxfs.c 2>/dev/null || true
+
+                  sed -i 's/^static const struct file_operations sel_handle_status_ops = {/const struct file_operations sel_handle_status_ops = {/' \
+                      security/selinux/selinuxfs.c 2>/dev/null || true
+
+                  sed -i 's/^static DEFINE_MUTEX(sel_mutex)/DEFINE_MUTEX(sel_mutex)/' \
+                      security/selinux/selinuxfs.c 2>/dev/null || true
+
+                  sed -i 's/^static struct page \*selinux_status_page/struct page *selinux_status_page/' \
+                      security/selinux/ss/status.c 2>/dev/null || true
+
+                  sed -i 's/^static DEFINE_MUTEX(selinux_status_lock)/DEFINE_MUTEX(selinux_status_lock)/' \
+                      security/selinux/ss/status.c 2>/dev/null || true
+
+                  echo "✨ [NO-KPROBES] Done (4.9)"
               fi
           fi
 
@@ -420,9 +446,9 @@ jobs:
             Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
             
           if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
-            echo "❌ [ERROR] Kernel compilation failed." && exit 1
+              echo "❌ [ERROR] Kernel compilation failed." && exit 1
           else
-            echo "✅ [SUCCESS] Kernel compilation successful."
+              echo "✅ [SUCCESS] Kernel compilation successful."
           fi
 
       - name: Package with AnyKernel3
@@ -434,38 +460,38 @@ jobs:
           
           echo "⚙️ [PROSES] Menyiapkan file kernel..."
           if [[ -f "$KERNEL_DIR/Image.gz" && -f "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" ]]; then
-            echo "📦 [BUILD] Menggabungkan Image.gz dengan Beryllium DTB..."
-            cat "$KERNEL_DIR/Image.gz" "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" > AnyKernel3/Image.gz-dtb
+              echo "📦 [BUILD] Menggabungkan Image.gz dengan Beryllium DTB..."
+              cat "$KERNEL_DIR/Image.gz" "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" > AnyKernel3/Image.gz-dtb
           else
-            COMPRESSED_FOUND="false"
-            for img in Image.gz-dtb Image-dtb Image.gz; do
-              if [[ -f "$KERNEL_DIR/$img" ]]; then
-                echo "✅ [INFO] Ditemukan file $img, menyalin ke AnyKernel3..."
-                cp "$KERNEL_DIR/$img" AnyKernel3/
-                COMPRESSED_FOUND="true"
-                break
+              COMPRESSED_FOUND="false"
+              for img in Image.gz-dtb Image-dtb Image.gz; do
+                  if [[ -f "$KERNEL_DIR/$img" ]]; then
+                      echo "✅ [INFO] Ditemukan file $img, menyalin ke AnyKernel3..."
+                      cp "$KERNEL_DIR/$img" AnyKernel3/
+                      COMPRESSED_FOUND="true"
+                      break
+                  fi
+              done
+              if [[ "$COMPRESSED_FOUND" != "true" && -f "$KERNEL_DIR/Image" ]]; then
+                  echo "⚠️ [WARN] Image terkompresi tidak ditemukan!"
+                  echo "🗜️ [COMPRESS] Mengompres Image mentah ke Gzip secara manual (-9)..."
+                  gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz
               fi
-            done
-            if [[ "$COMPRESSED_FOUND" != "true" && -f "$KERNEL_DIR/Image" ]]; then
-              echo "⚠️ [WARN] Image terkompresi tidak ditemukan!"
-              echo "🗜️ [COMPRESS] Mengompres Image mentah ke Gzip secara manual (-9)..."
-              gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz
-            fi
           fi
           
           if [[ -f "$KERNEL_DIR/dtbo.img" ]]; then
-            echo "💾 [INFO] Ditemukan dtbo.img, menyalin ke AnyKernel3..."
-            cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
+              echo "💾 [INFO] Ditemukan dtbo.img, menyalin ke AnyKernel3..."
+              cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
           fi
           
           rm -f AnyKernel3/*placeholder
           
           echo "🔍 [CEK] Memverifikasi hasil packaging AnyKernel3..."
           if ls AnyKernel3/Image* 1> /dev/null 2>&1; then
-            echo "✨ [SUKSES] File kernel berhasil dipaketkan ke dalam folder AnyKernel3!"
+              echo "✨ [SUKSES] File kernel berhasil dipaketkan ke dalam folder AnyKernel3!"
           else
-            echo "❌ [GAGAL] File Image kernel tidak ditemukan di folder AnyKernel3!"
-            exit 1
+              echo "❌ [GAGAL] File Image kernel tidak ditemukan di folder AnyKernel3!"
+              exit 1
           fi
           
           echo "🏷️ [TAG] Menyiapkan nama output Artifact..."
