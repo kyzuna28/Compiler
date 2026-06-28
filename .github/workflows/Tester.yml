@@ -48,7 +48,7 @@ on:
         - no lto
         - full
         - thin
-     custom_tweaks:
+      custom_tweaks:
         description: 'Tweak/Patch Kernel (.patch / .sh). Pisahkan dengan koma.'
         default: 'none'
         required: false
