@@ -62,13 +62,14 @@ on:
         - "none"
         - "apatch"
         - "xxksu"
+        -"mambosu"
         - "rsuntk"
         - "sukisu"
         - "next"
         - "resukisu"
         - "thre"
       custom_hooks:
-        description: 'sukisu/xxksu no manual hook'
+        description: 'sukisu/xxksu/mambosu no manual hook'
         default: 'none'
         required: false
         type: string
@@ -252,6 +253,11 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master
             disable_cfg KSU_KPROBES_KSUD
 
+          if [ "$KSU_CHOICE" == "mambosu" ]; then
+            echo "🚀 [MAMBOSU] Memasang mambosu (raplivx)..."
+            curl -LSs "https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh" | bash -s xxksu
+            disable_cfg KSU_KPROBES_KSUD
+            
           elif [ "$KSU_CHOICE" == "rsuntk" ]; then
             echo "🚀 [RSUNTK] Memasang rsuntk..."
             curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/refs/heads/main/kernel/setup.sh" | bash -s main
