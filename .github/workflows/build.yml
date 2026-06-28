@@ -275,16 +275,38 @@ jobs:
               fi
 
               echo "⚙️ [KSU] Menerapkan Defconfig khusus untuk $KSU_FORK..."
+              # Base KSU config untuk semua
               enable_cfg KSU KALLSYMS KALLSYMS_ALL
               
-              if [[ "$KSU_FORK" == "rsuntk" || "$KSU_FORK" == "next" || "$KSU_FORK" == "resukisu" || "$KSU_FORK" == "thre" || "$KSU_FORK" == "sukisu" ]]; then
+              # 1. Logika Manual Hook (rsuntk, next, resukisu)
+              if [[ "$KSU_FORK" == "rsuntk" || "$KSU_FORK" == "next" || "$KSU_FORK" == "resukisu" ]]; then
                   if [[ "$SUSFS_STATE" != "true" ]]; then
                       enable_cfg KSU_MANUAL_HOOK
                   fi
               fi
               
-              if [[ "$KSU_FORK" == "thre" ]]; then disable_cfg KPROBES HAVE_KPROBES; fi
-              if [[ "$KSU_FORK" == "xxksu" ]]; then disable_cfg KSU_KPROBES_KSUD; fi
+              # 2. Logika xxksu
+              if [[ "$KSU_FORK" == "xxksu" ]]; then
+                  disable_cfg KSU_KPROBES_KSUD
+              fi
+
+              # 3. Logika khusus sukisu & resukisu
+              if [[ "$KSU_FORK" == "sukisu" || "$KSU_FORK" == "resukisu" ]]; then
+                  if [[ "$SUSFS_STATE" != "true" ]]; then
+                      disable_cfg KSU_SUSFS
+                  elif [[ "$SUSFS_STATE" == "true" ]]; then
+                      enable_cfg KSU_SUSFS
+                  fi
+              fi
+              
+              # 4. Pengecualian logika untuk thre (tetap dipertahankan)
+              if [[ "$KSU_FORK" == "thre" ]]; then
+                  if [[ "$SUSFS_STATE" != "true" ]]; then
+                      enable_cfg KSU_MANUAL_HOOK
+                  fi
+                  disable_cfg KPROBES HAVE_KPROBES
+              fi
+
               echo "✨ [KSU] Selesai mengatur Root!"
           fi
 
