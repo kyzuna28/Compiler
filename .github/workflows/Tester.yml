@@ -203,7 +203,7 @@ jobs:
           patch -p1 < hooksultra.patch || true
           
           echo "📩 [SUKI-ULTRA] Memasang driver SUKI-ULTRA..."
-          curl -LSs https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh | bash -s susfs-mambo-master
+          curl -LSs https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh | bash -s xxksu
           
           echo "⚙️ [SUKI-ULTRA] Menyesuaikan defconfig..."
           enable_cfg KSU KSU_MANUAL_HOOK
