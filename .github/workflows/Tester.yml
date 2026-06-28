@@ -62,7 +62,7 @@ on:
         - "none"
         - "apatch"
         - "xxksu"
-        -"mambosu"
+        - "mambosu"
         - "rsuntk"
         - "sukisu"
         - "next"
