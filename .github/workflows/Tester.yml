@@ -284,8 +284,9 @@ jobs:
 
           elif [ "$KSU_CHOICE" == "sukisu" ]; then
             echo "🚀 [SUKISU] Memasang SukiSU-Ultra..."
-            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s old
-            disable_cfg KSU_SUSFS
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s builtin
+            enable_cfg KSU_SUSFS KSU_MANUAL_HOOK_AUTO_INPUT_HOOK KSU_MANUAL_HOOK_AUTO_SETUID_HOOK KSU_MANUAL_HOOK_AUTO_INITRC_HOOK
+            disable_cfg KSU_SUSFS_INLINE_HOOK
 
           elif [ "$KSU_CHOICE" == "next" ]; then
             echo "🚀 [NEXT] Memasang KernelSU-Next (Legacy)..."
