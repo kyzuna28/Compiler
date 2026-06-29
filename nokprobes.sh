@@ -25,7 +25,7 @@ if ! grep -qr "check_symbol_export" drivers/kernelsu/tools 2>/dev/null; then
 fi
 
 # 3. Cari defconfig yang sedang digunakan
-TARGET_CONFIG=$(grep -Rsl "^CONFIG_KSU=y$" arch/*/configs 2>/dev/null | head -n1)
+TARGET_CONFIG=$(grep -Rsl "^CONFIG_KSU=y" arch/*/configs 2>/dev/null | head -n1)
 
 if [ -z "$TARGET_CONFIG" ]; then
     echo "Skip: Defconfig aktif tidak ditemukan."
