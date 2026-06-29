@@ -24,16 +24,26 @@ if ! grep -qr "check_symbol_export" drivers/kernelsu/tools 2>/dev/null; then
     exit 0
 fi
 
-# 3. KALLSYMS aktif (Pengecekan global di seluruh config tanpa env var)
-if grep -Rqs "^CONFIG_KALLSYMS=y" arch/*/configs 2>/dev/null \
-&& grep -Rqs "^CONFIG_KALLSYMS_ALL=y" arch/*/configs 2>/dev/null; then
-    echo "Skip: CONFIG_KALLSYMS_ALL sudah aktif di config."
+# 3. Cari defconfig yang sedang digunakan
+TARGET_CONFIG=$(grep -Rsl "^CONFIG_KSU=y$" arch/*/configs 2>/dev/null | head -n1)
+
+if [ -z "$TARGET_CONFIG" ]; then
+    echo "Skip: Defconfig aktif tidak ditemukan."
+    exit 0
+fi
+
+echo "[*] Using config: $TARGET_CONFIG"
+
+# 4. Skip jika KALLSYMS sudah aktif pada defconfig tersebut
+if grep -q "^CONFIG_KALLSYMS=y" "$TARGET_CONFIG" \
+&& grep -q "^CONFIG_KALLSYMS_ALL=y" "$TARGET_CONFIG"; then
+    echo "Skip: CONFIG_KALLSYMS_ALL sudah aktif."
     exit 0
 fi
 
 echo "[*] Syarat terpenuhi, menerapkan patch penghapusan static state..."
 
-# 4. Looping Eksekusi Patch
+# 5. Looping Eksekusi Patch
 for i in "${patch_files[@]}"; do
     # Jika file tidak ada, lewati ke file berikutnya
     [ -f "$i" ] || continue
