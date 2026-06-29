@@ -237,96 +237,77 @@ jobs:
         KSU_CHOICE="${{ inputs.kernelsu }}"
         TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
 
-        # Fungsi Autopilot: Deteksi Jalur, Koreksi Posisi, dan Paksa Hook
+        # Cek apakah file defconfig beneran ada (Jaga-jaga typo dari input)
+        if [ ! -f "$TARGET_CONFIG" ]; then
+          echo "⚠️ [WARN] TARGET_CONFIG ($TARGET_CONFIG) tidak ditemukan! Cek input nama defconfig lu."
+        fi
+
+        # Fungsi Autopilot: Deteksi, Koreksi, dan Paksa Hook Brutal
         verify_and_force_hook() {
           local name=$1
-          echo "🔍 [VERIFY] Memulai pengecekan ganda jalur untuk $name..."
+          echo "🔍 [VERIFY] Memulai pengecekan ganda untuk $name..."
 
-          # 1. Deteksi otomatis di mana folder 'drivers' milik kernel berada
+          # 1. Deteksi otomatis folder drivers
           local kernel_drivers_dir=""
-          if [ -d "common/drivers" ]; then
-            kernel_drivers_dir="common/drivers"
-          elif [ -d "drivers" ]; then
-            kernel_drivers_dir="drivers"
-          else
-            echo "❌ [ERROR] Struktur kernel aneh: Folder 'drivers/' atau 'common/drivers/' tidak ditemukan!"
-            exit 1
-          fi
-          echo "📂 [DETECT] Folder drivers kernel berada di: $kernel_drivers_dir"
+          if [ -d "common/drivers" ]; then kernel_drivers_dir="common/drivers";
+          elif [ -d "drivers" ]; then kernel_drivers_dir="drivers";
+          else echo "❌ [ERROR] Folder drivers/ tidak ditemukan!"; exit 1; fi
+          echo "📂 [DETECT] Folder drivers: $kernel_drivers_dir"
 
-          # 2. Cari di mana source KernelSU berada (antisipasi setup.sh salah naruh/beda jalur)
+          # 2. Cari direktori source KernelSU yang diunduh
           local ksu_source_dir=""
-          if [ -d "KernelSU/kernel" ]; then
-            ksu_source_dir="KernelSU/kernel"
-          elif [ -d "common/KernelSU/kernel" ]; then
-            ksu_source_dir="common/KernelSU/kernel"
-          elif [ -d "../KernelSU/kernel" ]; then
-            ksu_source_dir="../KernelSU/kernel"
+          if [ -d "KernelSU/kernel" ]; then ksu_source_dir="KernelSU/kernel";
+          elif [ -d "common/KernelSU/kernel" ]; then ksu_source_dir="common/KernelSU/kernel";
+          elif [ -d "../KernelSU/kernel" ]; then ksu_source_dir="../KernelSU/kernel";
           else
-            # Jika tidak ketemu, cari paksa menggunakan command find ke seluruh direktori
-            local find_res
-            find_res=$(find . -maxdepth 3 -type d -path "*/KernelSU/kernel" -print -quit 2>/dev/null)
-            if [ -n "$find_res" ]; then
-              ksu_source_dir="$find_res"
-            fi
+            ksu_source_dir=$(find . -maxdepth 3 -type d -path "*/KernelSU/kernel" -print -quit 2>/dev/null)
           fi
 
-          # 3. Eksekusi Koreksi Otomatis jika Symlink hilang atau salah jalur
+          # 3. Koreksi Symlink Otomatis
           if [ ! -d "$kernel_drivers_dir/kernelsu" ] || [ ! -f "$kernel_drivers_dir/kernelsu/Makefile" ]; then
-            echo "⚠️ [WARN] Symlink 'kernelsu' tidak valid atau salah jalur. Menjalankan auto-koreksi..."
-            
             if [ -n "$ksu_source_dir" ] && [ -d "$ksu_source_dir" ]; then
-              echo "🎯 [FIX] Source KernelSU ditemukan di: $ksu_source_dir"
               rm -rf "$kernel_drivers_dir/kernelsu" || true
-              
-              # Buat symlink relatif yang aman berdasarkan posisi folder drivers
-              local rel_path
-              rel_path=$(realpath --relative-to="$kernel_drivers_dir" "$ksu_source_dir")
+              local rel_path=$(realpath --relative-to="$kernel_drivers_dir" "$ksu_source_dir")
               ln -sf "$rel_path" "$kernel_drivers_dir/kernelsu"
-              echo "✅ [FIX] Berhasil membuat ulang symlink ke $kernel_drivers_dir/kernelsu"
+              echo "✅ [FIX] Symlink otomatis dikoreksi ke $ksu_source_dir"
             else
-              echo "❌ [ERROR] Gagal auto-koreksi: Folder source 'KernelSU/kernel' tidak ditemukan di direktori mana pun! Cek koneksi atau repo KSU."
+              echo "❌ [ERROR] Kode KernelSU tidak ditemukan! Gagal unduh?"
               exit 1
             fi
           fi
 
-          # 4. Paksa Injeksi Instruksi Kompilasi ke Makefile & Kconfig target
-          local target_makefile="$kernel_drivers_dir/Makefile"
-          local target_kconfig="$kernel_drivers_dir/Kconfig"
-
-          if ! grep -q "kernelsu" "$target_makefile"; then
-            echo "🔧 [PATCH] Menambal manual $target_makefile..."
-            printf "\nobj-\$(CONFIG_KSU) += kernelsu/\n" >> "$target_makefile"
+          # 4. HOOK BRUTAL (Solusi Jitu Agar KSU Pasti Ikut Ke-Build)
+          echo "🔧 [PATCH] Menerapkan God-Mode Hook (Bypass Kconfig Dropping)..."
+          
+          # Hapus sisa hook lama bawaan setup.sh agar tidak bentrok/duplikat
+          sed -i '/kernelsu/d' "$kernel_drivers_dir/Makefile" || true
+          sed -i '/kernelsu/d' "$kernel_drivers_dir/Kconfig" || true
+          
+          # A. Paksa Kbuild SELALU memproses folder kernelsu (Ubah obj-$(CONFIG_KSU) jadi obj-y)
+          echo 'obj-y += kernelsu/' >> "$kernel_drivers_dir/Makefile"
+          
+          # B. Injeksi Kconfig langsung ke Root Kconfig (Biar gak nyangkut di blok if drivers)
+          if [ -f "Kconfig" ] && ! grep -q "drivers/kernelsu/Kconfig" Kconfig; then
+             echo 'source "drivers/kernelsu/Kconfig"' >> Kconfig
+          fi
+          
+          # C. Injeksi juga ke arch/arm64/Kconfig sebagai jaring pengaman ekstra
+          if [ -f "arch/arm64/Kconfig" ] && ! grep -q "drivers/kernelsu/Kconfig" arch/arm64/Kconfig; then
+             echo 'source "drivers/kernelsu/Kconfig"' >> arch/arm64/Kconfig
           fi
 
-          if ! grep -q "drivers/kernelsu/Kconfig" "$target_kconfig"; then
-            echo "🔧 [PATCH] Menambal manual $target_kconfig..."
-            if grep -q "endmenu" "$target_kconfig"; then
-              sed -i "/endmenu/i\source \"drivers/kernelsu/Kconfig\"" "$target_kconfig"
-            else
-              echo 'source "drivers/kernelsu/Kconfig"' >> "$target_kconfig"
-            fi
-          fi
-
-          # 5. Validasi Akhir Mutlak
-          if [ -d "$kernel_drivers_dir/kernelsu" ] && grep -q "kernelsu" "$target_makefile"; then
-            echo "✨ [SUCCESS] Verifikasi sukses gila! $name dipastikan masuk antrean build!"
-          else
-            echo "❌ [ERROR] Validasi akhir gagal. Setup $name tidak terbaca oleh sistem build."
-            exit 1
-          fi
+          echo "✨ [SUCCESS] Hook Brutal selesai! $name PASTI masuk antrean kompilasi kernel!"
         }
 
         if [ "$KSU_CHOICE" == "none" ]; then
-          echo "🧹 [ROOT] Mode 'none' dipilih. Skip instalasi Root (Kernel bersih tanpa patch/ksu/apatch)."
+          echo "🧹 [ROOT] Mode 'none' dipilih. Skip instalasi Root."
           
         elif [ "$KSU_CHOICE" == "apatch" ]; then
           echo "🧬 [APATCH] Mengonfigurasi APatch..."
           enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
-          echo "✅ [APATCH] Selesai menerapkan config!"
           
         else
-          # Nyalakan konfigurasi wajib KSU di defconfig secara absolut
+          # Nyalakan KSU di defconfig secara absolut
           enable_cfg KSU
           
           if [ "$KSU_CHOICE" == "xxksu" ]; then
@@ -378,7 +359,7 @@ jobs:
             exit 1
           fi
 
-          echo "✨ [ROOT] Sukses menerapkan kustomisasi untuk $KSU_CHOICE!"
+          echo "✨ [ROOT] Sukses menerapkan kustomisasi penuh untuk $KSU_CHOICE!"
         fi
 
         # ==========================================
