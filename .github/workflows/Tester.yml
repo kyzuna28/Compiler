@@ -295,8 +295,7 @@ jobs:
           elif [ "$KSU_CHOICE" == "resukisu" ]; then
             echo "🚀 [RESUKISU] Memasang ReSukiSU..."
             curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s main
-            enable_cfg KSU_MANUAL_HOOK
-            disable_cfg KSU_SUSFS
+            enable_cfg KSU_SUSFS
             
           elif [ "$KSU_CHOICE" == "thre" ]; then
             echo "🚀 [THRE-NEXT] Memulai injeksi KernelSU (thre)..."
