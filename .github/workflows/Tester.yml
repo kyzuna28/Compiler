@@ -189,6 +189,7 @@ jobs:
         disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
 
         REPO_RAW="https://raw.githubusercontent.com/kyzuna28/Compiler/main"
+        REPO_API="https://api.github.com/repos/kyzuna28/Compiler/git/trees/main?recursive=1"
 
         process_custom_files() {
             local input_string="$1"
@@ -196,31 +197,49 @@ jobs:
 
             if [[ "$input_string" != "none" && -n "$input_string" ]]; then
                 echo "🪝 [$step_name] Memproses: $input_string..."
+                
+                # [PRO MODE] Ambil struktur repo HANYA SEKALI dan simpan di cache
+                # Mencegah GitHub API Rate Limit (terutama untuk public repo tanpa auth)
+                if [[ -z "$REPO_TREE_CACHE" ]]; then
+                    echo "🔍 Membaca struktur direktori dari repositori kyzuna28/Compiler..."
+                    export REPO_TREE_CACHE=$(curl -s "$REPO_API" | grep -o '"path": "[^"]*"' | cut -d'"' -f4)
+                    
+                    if [[ -z "$REPO_TREE_CACHE" ]]; then
+                        echo "❌ [FATAL] Gagal mengambil struktur repositori dari GitHub API! Periksa koneksi atau limit API."
+                        exit 1
+                    fi
+                fi
+                
                 IFS=',' read -ra FILES <<< "$input_string"
                 for file in "${FILES[@]}"; do
-                    file=$(echo "$file" | xargs) # Bersihkan spasi
+                    file=$(echo "$file" | xargs) # Bersihkan spasi depan/belakang
                     [[ -z "$file" ]] && continue
                     
-                    echo "⬇️ Mencari $file..."
-                    # Cari di Root Dir dulu, kalau gagal cari di folder patch/
-                    if wget -q "$REPO_RAW/$file" -O "$file"; then
-                        echo "✅ Ditemukan di Root Dir."
-                    elif wget -q "$REPO_RAW/patch/$file" -O "$file"; then
-                        echo "✅ Ditemukan di folder patch/."
+                    echo "⬇️ Mencari file: $file..."
+                    
+                    # Mencari exact match dari nama file di seluruh subfolder (Regex aman)
+                    local FILE_PATH=$(echo "$REPO_TREE_CACHE" | grep -E "(^|/)$file$" | head -n 1)
+
+                    if [[ -n "$FILE_PATH" ]]; then
+                        echo "✅ Ditemukan di path: $FILE_PATH"
+                        # Unduh file menggunakan path aslinya dari RAW GitHub
+                        if ! wget -q "$REPO_RAW/$FILE_PATH" -O "$file"; then
+                            echo "❌ [FATAL] Gagal mengunduh $file dari $FILE_PATH! Proses berhenti."; exit 1;
+                        fi
                     else
-                        echo "❌ [FATAL] Gagal mengunduh $file! File tidak ditemukan di Root maupun folder patch/."; exit 1;
+                        echo "❌ [FATAL] File $file tidak ditemukan di folder manapun di repositori! Pastikan tidak typo."; exit 1;
                     fi
 
-                    # Eksekusi sesuai ekstensi
+                    # Eksekusi berdasarkan ekstensi
                     if [[ "$file" == *.patch ]]; then
                         echo "🩹 Menerapkan patch $file..."
                         patch -p1 < "$file" || { echo "❌ [FATAL] Gagal menerapkan patch $file! Proses berhenti."; exit 1; }
                     elif [[ "$file" == *.sh ]]; then
                         echo "🚀 Menjalankan script $file..."
                         chmod +x "$file"
-                        bash "$file" || { echo "❌ [FATAL] Script $file gagal! Proses berhenti."; exit 1; }
+                        bash "$file" || { echo "❌ [FATAL] Script $file gagal dieksekusi! Proses berhenti."; exit 1; }
                     else
-                        echo "❌ [FATAL] Ekstensi $file tidak didukung! Gunakan .patch atau .sh."; exit 1;
+                        echo "❌ [FATAL] Ekstensi $file tidak didukung! Harap gunakan .patch atau .sh."; exit 1;
                     fi
                 done
             fi
@@ -299,7 +318,9 @@ jobs:
         # ==========================================
         process_custom_files "${{ inputs.custom_hooks }}" "HOOKS"
 
-        # LTO Configuration
+        # ==========================================
+        # LTO CONFIGURATION
+        # ==========================================
         disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
         case "${{ inputs.lto_mode }}" in
           full) enable_cfg LTO LTO_CLANG LTO_CLANG_FULL ;;
