@@ -235,131 +235,63 @@ jobs:
         # STEP 2: ROOT KERNELSU / APATCH
         # ==========================================
         KSU_CHOICE="${{ inputs.kernelsu }}"
-        TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
-
-        # Cek apakah file defconfig beneran ada (Jaga-jaga typo dari input)
-        if [ ! -f "$TARGET_CONFIG" ]; then
-          echo "⚠️ [WARN] TARGET_CONFIG ($TARGET_CONFIG) tidak ditemukan! Cek input nama defconfig lu."
-        fi
-
-        # Fungsi Autopilot: Deteksi, Koreksi, dan Paksa Hook Brutal
-        verify_and_force_hook() {
-          local name=$1
-          echo "🔍 [VERIFY] Memulai pengecekan ganda untuk $name..."
-
-          # 1. Deteksi otomatis folder drivers
-          local kernel_drivers_dir=""
-          if [ -d "common/drivers" ]; then kernel_drivers_dir="common/drivers";
-          elif [ -d "drivers" ]; then kernel_drivers_dir="drivers";
-          else echo "❌ [ERROR] Folder drivers/ tidak ditemukan!"; exit 1; fi
-          echo "📂 [DETECT] Folder drivers: $kernel_drivers_dir"
-
-          # 2. Cari direktori source KernelSU yang diunduh
-          local ksu_source_dir=""
-          if [ -d "KernelSU/kernel" ]; then ksu_source_dir="KernelSU/kernel";
-          elif [ -d "common/KernelSU/kernel" ]; then ksu_source_dir="common/KernelSU/kernel";
-          elif [ -d "../KernelSU/kernel" ]; then ksu_source_dir="../KernelSU/kernel";
-          else
-            ksu_source_dir=$(find . -maxdepth 3 -type d -path "*/KernelSU/kernel" -print -quit 2>/dev/null)
-          fi
-
-          # 3. Koreksi Symlink Otomatis
-          if [ ! -d "$kernel_drivers_dir/kernelsu" ] || [ ! -f "$kernel_drivers_dir/kernelsu/Makefile" ]; then
-            if [ -n "$ksu_source_dir" ] && [ -d "$ksu_source_dir" ]; then
-              rm -rf "$kernel_drivers_dir/kernelsu" || true
-              local rel_path=$(realpath --relative-to="$kernel_drivers_dir" "$ksu_source_dir")
-              ln -sf "$rel_path" "$kernel_drivers_dir/kernelsu"
-              echo "✅ [FIX] Symlink otomatis dikoreksi ke $ksu_source_dir"
-            else
-              echo "❌ [ERROR] Kode KernelSU tidak ditemukan! Gagal unduh?"
-              exit 1
-            fi
-          fi
-
-          # 4. HOOK BRUTAL (Solusi Jitu Agar KSU Pasti Ikut Ke-Build)
-          echo "🔧 [PATCH] Menerapkan God-Mode Hook (Bypass Kconfig Dropping)..."
-          
-          # Hapus sisa hook lama bawaan setup.sh agar tidak bentrok/duplikat
-          sed -i '/kernelsu/d' "$kernel_drivers_dir/Makefile" || true
-          sed -i '/kernelsu/d' "$kernel_drivers_dir/Kconfig" || true
-          
-          # A. Paksa Kbuild SELALU memproses folder kernelsu (Ubah obj-$(CONFIG_KSU) jadi obj-y)
-          echo 'obj-y += kernelsu/' >> "$kernel_drivers_dir/Makefile"
-          
-          # B. Injeksi Kconfig langsung ke Root Kconfig (Biar gak nyangkut di blok if drivers)
-          if [ -f "Kconfig" ] && ! grep -q "drivers/kernelsu/Kconfig" Kconfig; then
-             echo 'source "drivers/kernelsu/Kconfig"' >> Kconfig
-          fi
-          
-          # C. Injeksi juga ke arch/arm64/Kconfig sebagai jaring pengaman ekstra
-          if [ -f "arch/arm64/Kconfig" ] && ! grep -q "drivers/kernelsu/Kconfig" arch/arm64/Kconfig; then
-             echo 'source "drivers/kernelsu/Kconfig"' >> arch/arm64/Kconfig
-          fi
-
-          echo "✨ [SUCCESS] Hook Brutal selesai! $name PASTI masuk antrean kompilasi kernel!"
-        }
 
         if [ "$KSU_CHOICE" == "none" ]; then
-          echo "🧹 [ROOT] Mode 'none' dipilih. Skip instalasi Root."
+          echo "🧹 [ROOT] Mode 'none' dipilih. Skip instalasi Root (Kernel bersih tanpa patch/ksu/apatch)."
           
         elif [ "$KSU_CHOICE" == "apatch" ]; then
           echo "🧬 [APATCH] Mengonfigurasi APatch..."
           enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
+          echo "✅ [APATCH] Selesai menerapkan config!"
           
         else
-          # Nyalakan KSU di defconfig secara absolut
+          # Pastikan KSU nyala untuk semua varian di bawah ini
           enable_cfg KSU
           
           if [ "$KSU_CHOICE" == "xxksu" ]; then
             echo "🚀 [XXKSU] Memasang xxksu (backslashxx)..."
             curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master
             disable_cfg KSU_KPROBES_KSUD
-            verify_and_force_hook "XXKSU"
 
           elif [ "$KSU_CHOICE" == "mambosu" ]; then
             echo "🚀 [MAMBOSU] Memasang mambosu (raplivx)..."
-            curl -LSs "https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh" | bash -s master
+            curl -LSs "https://raw.githubusercontent.com/hzzmonetvn/KernelSU/master/kernel/setup.sh" | bash -s master
             disable_cfg KSU_KPROBES_KSUD
-            verify_and_force_hook "MAMBOSU"
             
           elif [ "$KSU_CHOICE" == "rsuntk" ]; then
             echo "🚀 [RSUNTK] Memasang rsuntk..."
             curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/refs/heads/main/kernel/setup.sh" | bash -s main
             enable_cfg KSU_MANUAL_HOOK
-            verify_and_force_hook "RSUNTK"
 
           elif [ "$KSU_CHOICE" == "sukisu" ]; then
             echo "🚀 [SUKISU] Memasang SukiSU-Ultra..."
             curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s old
             disable_cfg KSU_SUSFS
-            verify_and_force_hook "SUKISU"
 
           elif [ "$KSU_CHOICE" == "next" ]; then
             echo "🚀 [NEXT] Memasang KernelSU-Next (Legacy)..."
             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/refs/heads/legacy/kernel/setup.sh" | bash -s legacy
             enable_cfg KSU_MANUAL_HOOK
-            verify_and_force_hook "NEXT"
 
           elif [ "$KSU_CHOICE" == "resukisu" ]; then
             echo "🚀 [RESUKISU] Memasang ReSukiSU..."
             curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s main
             enable_cfg KSU_MANUAL_HOOK
             disable_cfg KSU_SUSFS
-            verify_and_force_hook "RESUKISU"
             
           elif [ "$KSU_CHOICE" == "thre" ]; then
             echo "🚀 [THRE-NEXT] Memulai injeksi KernelSU (thre)..."
+            echo "📥 [THRE-NEXT] Memasang Next (Main)..."
             curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main
             enable_cfg KSU_MANUAL_HOOK
             disable_cfg KPROBES HAVE_KPROBES
-            verify_and_force_hook "THRE-NEXT"
 
           else
             echo "❌ [ERROR] Fork Root tidak dikenali: $KSU_CHOICE"
             exit 1
           fi
 
-          echo "✨ [ROOT] Sukses menerapkan kustomisasi penuh untuk $KSU_CHOICE!"
+          echo "✨ [ROOT] Sukses menerapkan kustomisasi untuk $KSU_CHOICE!"
         fi
 
         # ==========================================
