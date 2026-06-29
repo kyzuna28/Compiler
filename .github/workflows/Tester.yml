@@ -284,9 +284,8 @@ jobs:
 
           elif [ "$KSU_CHOICE" == "sukisu" ]; then
             echo "🚀 [SUKISU] Memasang SukiSU-Ultra..."
-            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s builtin
-            enable_cfg KSU_SUSFS KSU_MANUAL_HOOK_AUTO_INPUT_HOOK KSU_MANUAL_HOOK_AUTO_SETUID_HOOK KSU_MANUAL_HOOK_AUTO_INITRC_HOOK
-            disable_cfg KSU_SUSFS_INLINE_HOOK
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/setup.sh" | bash -s e0b1a98
+            enable_cfg KSU_SUSFS
 
           elif [ "$KSU_CHOICE" == "next" ]; then
             echo "🚀 [NEXT] Memasang KernelSU-Next (Legacy)..."
@@ -296,8 +295,7 @@ jobs:
           elif [ "$KSU_CHOICE" == "resukisu" ]; then
             echo "🚀 [RESUKISU] Memasang ReSukiSU..."
             curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s 98034c7
-            enable_cfg KSU_SUSFS KSU_MANUAL_HOOK_AUTO_INPUT_HOOK KSU_MANUAL_HOOK_AUTO_SETUID_HOOK KSU_MANUAL_HOOK_AUTO_INITRC_HOOK
-            disable_cfg KSU_SUSFS_INLINE_HOOK
+            enable_cfg KSU_SUSFS
             
           elif [ "$KSU_CHOICE" == "thre" ]; then
             echo "🚀 [THRE-NEXT] Memulai injeksi KernelSU (thre)..."
