@@ -255,7 +255,7 @@ jobs:
 
           elif [ "$KSU_CHOICE" == "mambosu" ]; then
             echo "🚀 [MAMBOSU] Memasang mambosu (raplivx)..."
-            curl -LSs "https://raw.githubusercontent.com/hzzmonetvn/MamboSU/master/kernel/setup.sh" | bash -s master
+            curl -LSs "https://raw.githubusercontent.com/demo19930817/mambosu/master/kernel/setup.sh" | bash -s master
             disable_cfg KSU_KPROBES_KSUD
             
           elif [ "$KSU_CHOICE" == "rsuntk" ]; then
