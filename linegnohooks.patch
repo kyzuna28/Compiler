@@ -447,7 +447,6 @@ index e8537d462..d1160c027 100644
 +
  #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
  	struct filename *fake_filename = NULL;
--	struct filename *tmp = pathname;
  	bool is_inode_open_redirect = false;
 
  retry:
