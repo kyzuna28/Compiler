@@ -342,7 +342,7 @@ jobs:
         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
 
         # Target compiler flag khusus Debian Clang
-        EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
+        EXTRA_CFLAGS=\( ([[ " \){{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
         OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75 -mtune=cortex-a75 -falign-functions=64"
         
         CORES=$(nproc --all)
@@ -351,16 +351,25 @@ jobs:
         [[ "$MAKE_JOBS" -lt 2 ]] && MAKE_JOBS=2
         [[ "$MAKE_JOBS" -gt 8 ]] && MAKE_JOBS=8
 
-        CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
-        CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
+        CLEAN_ROM=\( (echo " \){{ inputs.rom_type }}" | tr -d ' ')
+        CLEAN_KERNEL=\( (echo " \){{ inputs.kernel_name }}" | tr -d ' ')
 
         echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
 
         # ==========================================
-        # ⚡ PRE-BUILD KERNELSU (FAIL-FAST)
+        # ⚡ PRE-BUILD KERNELSU (FIXED & STABLE)
         # ==========================================
-        if [ "${{ inputs.kernelsu }}" != "none" ] && [ "${{ inputs.kernelsu }}" != "apatch" ]; then
-          echo "⚡ [PRE-BUILD] Mengkompilasi khusus folder KernelSU di awal untuk cek error/typo..."
+        if [ "\( {{ inputs.kernelsu }}" != "none" ] && [ " \){{ inputs.kernelsu }}" != "apatch" ]; then
+          echo "⚡ [PRE-BUILD] Menyiapkan kernel headers + compile KernelSU..."
+
+          # Langkah persiapan wajib agar generated/compile.h tersedia
+          make -j$MAKE_JOBS ARCH=arm64 O=../out \
+            LLVM=1 LLVM_IAS=1 \
+            CC=clang HOSTCC=clang HOSTCXX=clang++ \
+            prepare scripts modules_prepare 2>&1 | grep -vE "clang: warning:|Broken pipe"
+
+          echo "✅ Kernel preparation selesai. Mulai compile KernelSU..."
+
           if ! make -j$MAKE_JOBS ARCH=arm64 O=../out \
             LLVM=1 LLVM_IAS=1 \
             CC=clang HOSTCC=clang HOSTCXX=clang++ \
@@ -369,16 +378,18 @@ jobs:
             OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
             STRIP=llvm-strip READELF=llvm-readelf \
             CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-            LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
+            LOCALVERSION="-\( {CLEAN_KERNEL}- \){CLEAN_ROM}" \
             KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
             drivers/kernelsu/; then
             echo "❌ [FATAL] Kompilasi KernelSU gagal di awal! Silakan periksa log di atas."
             exit 1
           fi
-          echo "✅ [PRE-BUILD] KernelSU aman tanpa error! Melanjutkan full kompilasi kernel..."
+          echo "✅ [PRE-BUILD] KernelSU aman tanpa error!"
         fi
         
-        # ⚡ EKSEKUSI FULL LLVM MURNI (Host & Target)
+        # ==========================================
+        # ⚡ FULL KERNEL BUILD
+        # ==========================================
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
           LLVM=1 LLVM_IAS=1 \
           CC=clang HOSTCC=clang HOSTCXX=clang++ \
@@ -387,7 +398,7 @@ jobs:
           OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
           STRIP=llvm-strip READELF=llvm-readelf \
           CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-          LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
+          LOCALVERSION="-\( {CLEAN_KERNEL}- \){CLEAN_ROM}" \
           KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
           Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
         
