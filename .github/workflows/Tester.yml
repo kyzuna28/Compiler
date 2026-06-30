@@ -346,7 +346,8 @@ jobs:
         OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75 -mtune=cortex-a75 -falign-functions=64"
         
         CORES=$(nproc --all)
-        MAKE_JOBS=$(( (CORES + 1) / 2 ))
+        MAKE_JOBS=$((CORES + 1))
+        MAKE_JOBS=$((MAKE_JOBS / 2))
         [[ "${{ inputs.lto_mode }}" == "full" ]] && MAKE_JOBS=2
         [[ "$MAKE_JOBS" -lt 2 ]] && MAKE_JOBS=2
         [[ "$MAKE_JOBS" -gt 8 ]] && MAKE_JOBS=8
@@ -357,7 +358,7 @@ jobs:
         echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
 
         # =============================================
-        # 🔥 KSU DRIVER PALING AWAL + FULL BUILD (Satu Command)
+        # 🔥 KSU DRIVER PALING AWAL + FULL BUILD
         # =============================================
         echo "🔥 [EARLY KSU] Compiling KernelSU driver first then full kernel..."
 
