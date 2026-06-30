@@ -275,7 +275,7 @@ jobs:
           elif [ "$KSU_CHOICE" == "mambosu" ]; then
             echo "🚀 [MAMBOSU] Memasang mambosu (raplivx)..."
             curl -LSs "https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh" | bash -s master
-            disable_cfg KSU_SUSFS
+            enable_cfg KSU_SUSFS KSU_KPROBES_KSUD KSU
             
           elif [ "$KSU_CHOICE" == "rsuntk" ]; then
             echo "🚀 [RSUNTK] Memasang rsuntk..."
@@ -289,8 +289,8 @@ jobs:
 
           elif [ "$KSU_CHOICE" == "next" ]; then
             echo "🚀 [NEXT] Memasang KernelSU-Next (Legacy)..."
-            curl -sSL "https://raw.githubusercontent.com/sidex15/KernelSU-Next/refs/heads/stable/kernel/setup.sh" | bash -s v3.2.0-legacy-susfs-v2
-            enable_cfg KSU_SUSFS
+            curl -sSL "https://raw.githubusercontent.com/sidex15/KernelSU-Next/refs/heads/stable/kernel/setup.sh" | bash -s legacy-susfs-v2
+            enable_cfg KSU_SUSFS KSU
 
           elif [ "$KSU_CHOICE" == "resukisu" ]; then
             echo "🚀 [RESUKISU] Memasang ReSukiSU..."
