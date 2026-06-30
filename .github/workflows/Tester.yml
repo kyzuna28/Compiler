@@ -284,12 +284,12 @@ jobs:
 
           elif [ "$KSU_CHOICE" == "sukisu" ]; then
             echo "🚀 [SUKISU] Memasang SukiSU-Ultra..."
-            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/setup.sh" | bash -s e0b1a98
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/setup.sh" | bash -s df2b414
             enable_cfg KSU_SUSFS
 
           elif [ "$KSU_CHOICE" == "next" ]; then
             echo "🚀 [NEXT] Memasang KernelSU-Next (Legacy)..."
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/refs/heads/legacy/kernel/setup.sh" | bash -s 77b3027
+            curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/legacy-susfs-v2/kernel/setup.sh" | bash -s legacy-susfs-v2
             enable_cfg KSU_SUSFS
 
           elif [ "$KSU_CHOICE" == "resukisu" ]; then
