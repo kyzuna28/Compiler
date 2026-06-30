@@ -309,23 +309,13 @@ jobs:
             exit 1
           fi
 
+          echo "✨ [ROOT] Sukses menerapkan kustomisasi untuk $KSU_CHOICE!"
+        fi
+
         # ==========================================
         # STEP 3: CUSTOM HOOKS (POST-ROOT)
         # ==========================================
         process_custom_files "${{ inputs.custom_hooks }}" "HOOKS"
-        
-        # ==========================================
-        # FIX: PINDAHKAN URUTAN COMPILE KSU KE AWAL
-        # ==========================================
-        if grep -q "kernelsu" drivers/Makefile; then
-         echo "⚙️ Memindahkan urutan kompilasi KernelSU ke baris paling awal..."
-         KSU_LINE=$(grep "kernelsu" drivers/Makefile | head -n 1)
-         sed -i '/kernelsu/d' drivers/Makefile
-         sed -i "1i $KSU_LINE" drivers/Makefile
-        fi
-
-          echo "✨ [ROOT] Sukses menerapkan kustomisasi untuk $KSU_CHOICE!"
-        fi
 
         # ==========================================
         # LTO CONFIGURATION
@@ -365,6 +355,28 @@ jobs:
         CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
 
         echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
+
+        # ==========================================
+        # ⚡ PRE-BUILD KERNELSU (FAIL-FAST)
+        # ==========================================
+        if [ "${{ inputs.kernelsu }}" != "none" ] && [ "${{ inputs.kernelsu }}" != "apatch" ]; then
+          echo "⚡ [PRE-BUILD] Mengkompilasi khusus folder KernelSU di awal untuk cek error/typo..."
+          if ! make -j$MAKE_JOBS ARCH=arm64 O=../out \
+            LLVM=1 LLVM_IAS=1 \
+            CC=clang HOSTCC=clang HOSTCXX=clang++ \
+            LD=ld.lld HOSTLD=ld.lld \
+            AR=llvm-ar HOSTAR=llvm-ar NM=llvm-nm \
+            OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip READELF=llvm-readelf \
+            CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
+            LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
+            KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
+            drivers/kernelsu/; then
+            echo "❌ [FATAL] Kompilasi KernelSU gagal di awal! Silakan periksa log di atas."
+            exit 1
+          fi
+          echo "✅ [PRE-BUILD] KernelSU aman tanpa error! Melanjutkan full kompilasi kernel..."
+        fi
         
         # ⚡ EKSEKUSI FULL LLVM MURNI (Host & Target)
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
