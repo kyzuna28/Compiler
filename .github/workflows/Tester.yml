@@ -289,7 +289,7 @@ jobs:
 
           elif [ "$KSU_CHOICE" == "next" ]; then
             echo "🚀 [NEXT] Memasang KernelSU-Next (Legacy)..."
-            curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/legacy-susfs-v2/kernel/setup.sh" | bash -s legacy-susfs-v2
+            curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/legacy-susfs-v2/kernel/setup.sh" | bash -s 5681201
             enable_cfg KSU_SUSFS
 
           elif [ "$KSU_CHOICE" == "resukisu" ]; then
@@ -335,6 +335,20 @@ jobs:
         export KBUILD_BUILD_HOST="project"
         export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
         export LLVM_PARALLEL=1
+
+        # ==========================================
+        # ⚡ OPTIMASI FAIL-FAST: KOMPILASI KSU PERTAMA KALI
+        # ==========================================
+        if [ -f "drivers/Makefile" ] && grep -q "kernelsu" drivers/Makefile; then
+          echo "⚡ [FAIL-FAST] Memindahkan modul KernelSU ke urutan pertama di Makefile..."
+          # Ambil baris yang mengandung 'kernelsu' 
+          KSU_LINE=$(grep "kernelsu" drivers/Makefile | head -n 1)
+          # Hapus baris tersebut dari lokasi aslinya (biasanya di paling bawah)
+          sed -i '/kernelsu/d' drivers/Makefile
+          # Masukkan kembali baris tersebut tepat di baris ke-1
+          sed -i "1i $KSU_LINE" drivers/Makefile
+          echo "✅ [FAIL-FAST] Modul KernelSU akan dikompilasi lebih awal!"
+        fi
 
         [[ "${{ inputs.version_hash }}" == "no hash" ]] && echo "" > .scmversion && export LOCALVERSION_AUTO="" || rm -f .scmversion
 
