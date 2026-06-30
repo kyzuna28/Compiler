@@ -237,7 +237,7 @@ index 380bae4c5..3e58863de 100644
  extern int __mnt_want_write(struct vfsmount *);
  extern int __mnt_want_write_file(struct file *);
 diff --git a/fs/namei.c b/fs/namei.c
-index e8537d462..d1160c027 100644
+index e8537d462..639465270 100644
 --- a/fs/namei.c
 +++ b/fs/namei.c
 @@ -39,12 +39,25 @@
@@ -439,19 +439,18 @@ index e8537d462..d1160c027 100644
  
  	if (nd->last_type != LAST_NORM) {
  		error = handle_dots(nd, nd->last_type);
-@@ -3702,14 +3790,44 @@
+@@ -3702,14 +3790,44 @@ struct file *do_filp_open(int dfd, struct filename *pathname,
  	struct nameidata nd;
  	int flags = op->lookup_flags;
  	struct file *filp;
 +	struct filename *tmp = pathname;
++#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
++	struct filename *fake_filename = NULL;
++	bool is_inode_open_redirect = false;
 +
- #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
- 	struct filename *fake_filename = NULL;
- 	bool is_inode_open_redirect = false;
-
- retry:
- #endif
-
++retry:
++#endif
+ 
 -	set_nameidata(&nd, dfd, pathname);
 +	set_nameidata(&nd, dfd, tmp);
  	filp = path_openat(&nd, op, flags | LOOKUP_RCU);
@@ -3412,7 +3411,7 @@ index 000000000..92241056a
 +}
 +
 +/*
-+ * fsnotify handler â runs inside an SRCU read section held by fsnotify().
++ * fsnotify handler — runs inside an SRCU read section held by fsnotify().
 + * Must not block or call fsnotify_destroy_group() (which internally calls
 + * synchronize_srcu on the same SRCU struct, causing a permanent deadlock).
 + * Cleanup is deferred to a delayed_work that runs outside the SRCU context.
