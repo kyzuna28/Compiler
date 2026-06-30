@@ -308,25 +308,25 @@ jobs:
             echo "❌ [ERROR] Fork Root tidak dikenali: $KSU_CHOICE"
             exit 1
           fi
-          
+
         # ==========================================
         # STEP 3: CUSTOM HOOKS (POST-ROOT)
         # ==========================================
         process_custom_files "${{ inputs.custom_hooks }}" "HOOKS"
-
+        
         # ==========================================
         # FIX: PINDAHKAN URUTAN COMPILE KSU KE AWAL
         # ==========================================
         if grep -q "kernelsu" drivers/Makefile; then
-          echo "⚙️ Memindahkan urutan kompilasi KernelSU ke baris paling awal..."
-          KSU_LINE=$(grep "kernelsu" drivers/Makefile | head -n 1)
-          sed -i '/kernelsu/d' drivers/Makefile
-          sed -i "1i $KSU_LINE" drivers/Makefile
+         echo "⚙️ Memindahkan urutan kompilasi KernelSU ke baris paling awal..."
+         KSU_LINE=$(grep "kernelsu" drivers/Makefile | head -n 1)
+         sed -i '/kernelsu/d' drivers/Makefile
+         sed -i "1i $KSU_LINE" drivers/Makefile
         fi
 
-        echo "✨ [ROOT] Sukses menerapkan kustomisasi untuk $KSU_CHOICE!"
-      fi
-        
+          echo "✨ [ROOT] Sukses menerapkan kustomisasi untuk $KSU_CHOICE!"
+        fi
+
         # ==========================================
         # LTO CONFIGURATION
         # ==========================================
