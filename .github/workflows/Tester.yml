@@ -308,15 +308,25 @@ jobs:
             echo "❌ [ERROR] Fork Root tidak dikenali: $KSU_CHOICE"
             exit 1
           fi
-
-          echo "✨ [ROOT] Sukses menerapkan kustomisasi untuk $KSU_CHOICE!"
-        fi
-
+          
         # ==========================================
         # STEP 3: CUSTOM HOOKS (POST-ROOT)
         # ==========================================
         process_custom_files "${{ inputs.custom_hooks }}" "HOOKS"
 
+        # ==========================================
+        # FIX: PINDAHKAN URUTAN COMPILE KSU KE AWAL
+        # ==========================================
+        if grep -q "kernelsu" drivers/Makefile; then
+          echo "⚙️ Memindahkan urutan kompilasi KernelSU ke baris paling awal..."
+          KSU_LINE=$(grep "kernelsu" drivers/Makefile | head -n 1)
+          sed -i '/kernelsu/d' drivers/Makefile
+          sed -i "1i $KSU_LINE" drivers/Makefile
+        fi
+
+        echo "✨ [ROOT] Sukses menerapkan kustomisasi untuk $KSU_CHOICE!"
+      fi
+        
         # ==========================================
         # LTO CONFIGURATION
         # ==========================================
@@ -341,36 +351,22 @@ jobs:
         rm -rf ../out && mkdir -p ../out
         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
 
-        # === Compiler Flags ===
-        EXTRA_CFLAGS=\( ([[ " \){{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
+        # Target compiler flag khusus Debian Clang
+        EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
         OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75 -mtune=cortex-a75 -falign-functions=64"
-
-        # === Hitung MAKE_JOBS (Fix Syntax Error) ===
+        
         CORES=$(nproc --all)
-        if [[ "${{ inputs.lto_mode }}" == "full" ]]; then
-          MAKE_JOBS=2
-        else
-          MAKE_JOBS=$((CORES / 2))
-          [[ $MAKE_JOBS -lt 2 ]] && MAKE_JOBS=2
-          [[ $MAKE_JOBS -gt 8 ]] && MAKE_JOBS=8
-        fi
+        MAKE_JOBS=$(( (CORES + 1) / 2 ))
+        [[ "${{ inputs.lto_mode }}" == "full" ]] && MAKE_JOBS=2
+        [[ "$MAKE_JOBS" -lt 2 ]] && MAKE_JOBS=2
+        [[ "$MAKE_JOBS" -gt 8 ]] && MAKE_JOBS=8
 
-        CLEAN_ROM=\( (echo " \){{ inputs.rom_type }}" | tr -d ' ')
-        CLEAN_KERNEL=\( (echo " \){{ inputs.kernel_name }}" | tr -d ' ')
+        CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
+        CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
 
         echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
-
-        # =============================================
-        # 🔥 KSU DRIVER PALING AWAL + FULL BUILD
-        # =============================================
-        echo "🔥 [EARLY KSU] Compiling KernelSU driver first..."
-
-        if [ -d "drivers/kernelsu" ]; then
-          echo "✅ [KSU] Directory drivers/kernelsu ditemukan."
-        else
-          echo "⚠️ [WARN] Directory drivers/kernelsu tidak ditemukan."
-        fi
-
+        
+        # ⚡ EKSEKUSI FULL LLVM MURNI (Host & Target)
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
           LLVM=1 LLVM_IAS=1 \
           CC=clang HOSTCC=clang HOSTCXX=clang++ \
@@ -379,12 +375,10 @@ jobs:
           OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
           STRIP=llvm-strip READELF=llvm-readelf \
           CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-          LOCALVERSION="-\( {CLEAN_KERNEL}- \){CLEAN_ROM}" \
+          LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
           KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
-          drivers/kernelsu/built-in.o Image.gz Image.gz-dtb dtbs 2>&1 | \
-          grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
-
-        # Final check
+          Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
+        
         if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
           echo "❌ [ERROR] Kernel compilation failed." && exit 1
         else
