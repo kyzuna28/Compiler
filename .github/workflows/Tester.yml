@@ -266,41 +266,78 @@ jobs:
         else
           # Pastikan KSU nyala untuk semua varian di bawah ini
           enable_cfg KSU
-          
+
+          # =============================================
+          # FUNGSI SETUP (CLEAN + EKSTRA)
+          # =============================================
+          setup_ksu() {
+            local name="$1"
+            local repo_url="$2"
+            local branch="$3"
+            local extra_args="${4:-}"
+
+            echo "🚀 [$name] Memasang $name..."
+
+            local tmp_dir="/tmp/ksu-setup-$(date +%s)"
+            mkdir -p "$tmp_dir"
+            cd "$tmp_dir" || { echo "❌ Gagal masuk tmp dir"; exit 1; }
+
+            if ! git clone --depth 1 --branch "$branch" "$repo_url" .; then
+              echo "❌ Git clone gagal!"
+              exit 1
+            fi
+
+            # Jalankan setup.sh
+            if [ -f "kernel/setup.sh" ]; then
+              bash kernel/setup.sh $extra_args
+            elif [ -f "setup.sh" ]; then
+              bash setup.sh $extra_args
+            else
+              echo "⚠️ setup.sh tidak ditemukan"
+              bash kernel/setup.sh $extra_args 2>/dev/null || true
+            fi
+
+            # Penanganan ekstra minimal
+            echo "🔧 Penyesuaian ekstra..."
+            if ! grep -q "KernelSU" ../../Makefile 2>/dev/null; then
+              echo "obj-y += KernelSU/" >> ../../Makefile
+              echo "   → Ditambahkan obj-y += KernelSU/ ke Makefile"
+            fi
+
+            cd - > /dev/null
+            rm -rf "$tmp_dir"
+            echo "✅ [$name] Sukses!"
+          }
+
+          # =============================================
+          # PILIHAN FORK
+          # =============================================
           if [ "$KSU_CHOICE" == "xxksu" ]; then
-            echo "🚀 [XXKSU] Memasang xxksu (backslashxx)..."
-            curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master
+            setup_ksu "XXKSU" "https://github.com/backslashxx/KernelSU.git" "master"
             disable_cfg KSU_KPROBES_KSUD
 
           elif [ "$KSU_CHOICE" == "mambosu" ]; then
-            echo "🚀 [MAMBOSU] Memasang mambosu (raplivx)..."
-            curl -LSs "https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh" | bash -s master
-            enable_cfg KSU_SUSFS KSU_KPROBES_KSUD KSU
-            
+            setup_ksu "MAMBOSU" "https://github.com/RapliVx/KernelSU.git" "master"
+            enable_cfg KSU_SUSFS KSU_KPROBES_KSUD
+
           elif [ "$KSU_CHOICE" == "rsuntk" ]; then
-            echo "🚀 [RSUNTK] Memasang rsuntk..."
-            curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/refs/heads/main/kernel/setup.sh" | bash -s main
+            setup_ksu "RSUNTK" "https://github.com/rsuntk/KernelSU.git" "main"
             enable_cfg KSU_MANUAL_HOOK
 
           elif [ "$KSU_CHOICE" == "sukisu" ]; then
-            echo "🚀 [SUKISU] Memasang SukiSU-Ultra..."
-            curl -sSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s builtin
+            setup_ksu "SUKISU" "https://github.com/SukiSU-Ultra/SukiSU-Ultra.git" "main" "builtin"
             enable_cfg KSU_SUSFS
 
           elif [ "$KSU_CHOICE" == "next" ]; then
-            echo "🚀 [NEXT] Memasang KernelSU-Next (Legacy)..."
-            curl -sSL "https://raw.githubusercontent.com/sidex15/KernelSU-Next/refs/heads/stable/kernel/setup.sh" | bash -s legacy-susfs-v2
+            setup_ksu "NEXT" "https://github.com/sidex15/KernelSU-Next.git" "stable" "legacy-susfs-v2"
             enable_cfg KSU_SUSFS KSU
 
           elif [ "$KSU_CHOICE" == "resukisu" ]; then
-            echo "🚀 [RESUKISU] Memasang ReSukiSU..."
-            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s 98034c7
+            setup_ksu "RESUKISU" "https://github.com/ReSukiSU/ReSukiSU.git" "main" "98034c7"
             enable_cfg KSU_SUSFS
-            
+
           elif [ "$KSU_CHOICE" == "thre" ]; then
-            echo "🚀 [THRE-NEXT] Memulai injeksi KernelSU (thre)..."
-            echo "📥 [THRE-NEXT] Memasang Next (Main)..."
-            curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main
+            setup_ksu "THRE-NEXT" "https://github.com/ThRE-Team/KernelSU-Next.git" "main"
             enable_cfg KSU_MANUAL_HOOK
             disable_cfg KPROBES HAVE_KPROBES
 
@@ -309,7 +346,7 @@ jobs:
             exit 1
           fi
 
-          echo "✨ [ROOT] Sukses menerapkan kustomisasi untuk $KSU_CHOICE!"
+          echo "✨ [ROOT] Sukses menerapkan kustomisasi untuk $KSU_CHOICE! (Config lain bisa diatur manual)"
         fi
 
         # ==========================================
