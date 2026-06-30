@@ -330,7 +330,7 @@ jobs:
 
           elif [ "$KSU_CHOICE" == "next" ]; then
             setup_ksu "NEXT" "https://github.com/sidex15/KernelSU-Next.git" "stable" "legacy-susfs-v2"
-            enable_cfg KSU_SUSFS KSU
+            enable_cfg KSU_SUSFS
 
           elif [ "$KSU_CHOICE" == "resukisu" ]; then
             setup_ksu "RESUKISU" "https://github.com/ReSukiSU/ReSukiSU.git" "main" "98034c7"
