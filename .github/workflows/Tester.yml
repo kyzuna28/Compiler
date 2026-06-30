@@ -289,8 +289,8 @@ jobs:
 
           elif [ "$KSU_CHOICE" == "next" ]; then
             echo "🚀 [NEXT] Memasang KernelSU-Next (Legacy)..."
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/refs/heads/legacy/kernel/setup.sh" | bash -s legacy
-            enable_cfg KSU_MANUAL_HOOK
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/refs/heads/legacy/kernel/setup.sh" | bash -s 77b3027
+            enable_cfg KSU_SUSFS
 
           elif [ "$KSU_CHOICE" == "resukisu" ]; then
             echo "🚀 [RESUKISU] Memasang ReSukiSU..."
