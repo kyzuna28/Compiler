@@ -273,7 +273,7 @@ index 380bae4c5..3e58863de 100644
  extern int __mnt_want_write(struct vfsmount *);
  extern int __mnt_want_write_file(struct file *);
 diff --git a/fs/namei.c b/fs/namei.c
-index e8537d462..d1160c027 100644
+index e8537d462..639465270 100644
 --- a/fs/namei.c
 +++ b/fs/namei.c
 @@ -39,12 +39,25 @@
@@ -479,9 +479,9 @@ index e8537d462..d1160c027 100644
  	struct nameidata nd;
  	int flags = op->lookup_flags;
  	struct file *filp;
++	struct filename *tmp = pathname;
 +#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 +	struct filename *fake_filename = NULL;
-+	struct filename *tmp = pathname;
 +	bool is_inode_open_redirect = false;
 +
 +retry:
