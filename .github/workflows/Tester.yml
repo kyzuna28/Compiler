@@ -341,7 +341,6 @@ jobs:
         rm -rf ../out && mkdir -p ../out
         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
 
-        # Target compiler flag khusus Debian Clang
         EXTRA_CFLAGS=\( ([[ " \){{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
         OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75 -mtune=cortex-a75 -falign-functions=64"
         
@@ -357,18 +356,17 @@ jobs:
         echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
 
         # ==========================================
-        # ⚡ PRE-BUILD KERNELSU (FIXED & STABLE)
+        # ⚡ PRE-BUILD KERNELSU (FIXED)
         # ==========================================
         if [ "\( {{ inputs.kernelsu }}" != "none" ] && [ " \){{ inputs.kernelsu }}" != "apatch" ]; then
-          echo "⚡ [PRE-BUILD] Menyiapkan kernel headers + compile KernelSU..."
+          echo "⚡ [PRE-BUILD] Menyiapkan headers sebelum compile KernelSU..."
 
-          # Langkah persiapan wajib agar generated/compile.h tersedia
+          # Persiapan wajib
           make -j$MAKE_JOBS ARCH=arm64 O=../out \
-            LLVM=1 LLVM_IAS=1 \
-            CC=clang HOSTCC=clang HOSTCXX=clang++ \
-            prepare scripts modules_prepare 2>&1 | grep -vE "clang: warning:|Broken pipe"
+            LLVM=1 LLVM_IAS=1 CC=clang HOSTCC=clang HOSTCXX=clang++ \
+            prepare scripts modules_prepare 2>&1 | grep -vE "warning:|Broken pipe"
 
-          echo "✅ Kernel preparation selesai. Mulai compile KernelSU..."
+          echo "✅ Preparation selesai. Compile KernelSU..."
 
           if ! make -j$MAKE_JOBS ARCH=arm64 O=../out \
             LLVM=1 LLVM_IAS=1 \
@@ -381,14 +379,14 @@ jobs:
             LOCALVERSION="-\( {CLEAN_KERNEL}- \){CLEAN_ROM}" \
             KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
             drivers/kernelsu/; then
-            echo "❌ [FATAL] Kompilasi KernelSU gagal di awal! Silakan periksa log di atas."
+            echo "❌ [FATAL] Kompilasi KernelSU gagal!"
             exit 1
           fi
-          echo "✅ [PRE-BUILD] KernelSU aman tanpa error!"
+          echo "✅ [PRE-BUILD] KernelSU berhasil!"
         fi
-        
+
         # ==========================================
-        # ⚡ FULL KERNEL BUILD
+        # ⚡ FULL BUILD
         # ==========================================
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
           LLVM=1 LLVM_IAS=1 \
