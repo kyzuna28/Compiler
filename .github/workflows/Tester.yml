@@ -341,16 +341,19 @@ jobs:
         rm -rf ../out && mkdir -p ../out
         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
 
-        # Compiler flags
+        # === Compiler Flags ===
         EXTRA_CFLAGS=\( ([[ " \){{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
         OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75 -mtune=cortex-a75 -falign-functions=64"
-        
+
+        # === Hitung MAKE_JOBS (Fix Syntax Error) ===
         CORES=$(nproc --all)
-        MAKE_JOBS=$((CORES + 1))
-        MAKE_JOBS=$((MAKE_JOBS / 2))
-        [[ "${{ inputs.lto_mode }}" == "full" ]] && MAKE_JOBS=2
-        [[ "$MAKE_JOBS" -lt 2 ]] && MAKE_JOBS=2
-        [[ "$MAKE_JOBS" -gt 8 ]] && MAKE_JOBS=8
+        if [[ "${{ inputs.lto_mode }}" == "full" ]]; then
+          MAKE_JOBS=2
+        else
+          MAKE_JOBS=$((CORES / 2))
+          [[ $MAKE_JOBS -lt 2 ]] && MAKE_JOBS=2
+          [[ $MAKE_JOBS -gt 8 ]] && MAKE_JOBS=8
+        fi
 
         CLEAN_ROM=\( (echo " \){{ inputs.rom_type }}" | tr -d ' ')
         CLEAN_KERNEL=\( (echo " \){{ inputs.kernel_name }}" | tr -d ' ')
@@ -360,7 +363,7 @@ jobs:
         # =============================================
         # 🔥 KSU DRIVER PALING AWAL + FULL BUILD
         # =============================================
-        echo "🔥 [EARLY KSU] Compiling KernelSU driver first then full kernel..."
+        echo "🔥 [EARLY KSU] Compiling KernelSU driver first..."
 
         if [ -d "drivers/kernelsu" ]; then
           echo "✅ [KSU] Directory drivers/kernelsu ditemukan."
@@ -381,7 +384,7 @@ jobs:
           drivers/kernelsu/built-in.o Image.gz Image.gz-dtb dtbs 2>&1 | \
           grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
 
-        # Final verification
+        # Final check
         if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
           echo "❌ [ERROR] Kernel compilation failed." && exit 1
         else
