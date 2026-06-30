@@ -274,8 +274,8 @@ jobs:
 
           elif [ "$KSU_CHOICE" == "mambosu" ]; then
             echo "🚀 [MAMBOSU] Memasang mambosu (raplivx)..."
-            curl -LSs "https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh" | bash -s xxksu
-            disable_cfg KSU_KPROBES_KSUD
+            curl -LSs "https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh" | bash -s master
+            disable_cfg KSU_SUSFS
             
           elif [ "$KSU_CHOICE" == "rsuntk" ]; then
             echo "🚀 [RSUNTK] Memasang rsuntk..."
@@ -341,7 +341,8 @@ jobs:
         rm -rf ../out && mkdir -p ../out
         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
 
-        EXTRA_CFLAGS=\( ([[ " \){{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
+        # Target compiler flag khusus Debian Clang
+        EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
         OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75 -mtune=cortex-a75 -falign-functions=64"
         
         CORES=$(nproc --all)
@@ -350,44 +351,12 @@ jobs:
         [[ "$MAKE_JOBS" -lt 2 ]] && MAKE_JOBS=2
         [[ "$MAKE_JOBS" -gt 8 ]] && MAKE_JOBS=8
 
-        CLEAN_ROM=\( (echo " \){{ inputs.rom_type }}" | tr -d ' ')
-        CLEAN_KERNEL=\( (echo " \){{ inputs.kernel_name }}" | tr -d ' ')
+        CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
+        CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
 
         echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
-
-        # ==========================================
-        # ⚡ PRE-BUILD KERNELSU (FIXED)
-        # ==========================================
-        if [ "\( {{ inputs.kernelsu }}" != "none" ] && [ " \){{ inputs.kernelsu }}" != "apatch" ]; then
-          echo "⚡ [PRE-BUILD] Menyiapkan headers sebelum compile KernelSU..."
-
-          # Persiapan wajib
-          make -j$MAKE_JOBS ARCH=arm64 O=../out \
-            LLVM=1 LLVM_IAS=1 CC=clang HOSTCC=clang HOSTCXX=clang++ \
-            prepare scripts modules_prepare 2>&1 | grep -vE "warning:|Broken pipe"
-
-          echo "✅ Preparation selesai. Compile KernelSU..."
-
-          if ! make -j$MAKE_JOBS ARCH=arm64 O=../out \
-            LLVM=1 LLVM_IAS=1 \
-            CC=clang HOSTCC=clang HOSTCXX=clang++ \
-            LD=ld.lld HOSTLD=ld.lld \
-            AR=llvm-ar HOSTAR=llvm-ar NM=llvm-nm \
-            OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip READELF=llvm-readelf \
-            CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-            LOCALVERSION="-\( {CLEAN_KERNEL}- \){CLEAN_ROM}" \
-            KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
-            drivers/kernelsu/; then
-            echo "❌ [FATAL] Kompilasi KernelSU gagal!"
-            exit 1
-          fi
-          echo "✅ [PRE-BUILD] KernelSU berhasil!"
-        fi
-
-        # ==========================================
-        # ⚡ FULL BUILD
-        # ==========================================
+        
+        # ⚡ EKSEKUSI FULL LLVM MURNI (Host & Target)
         make -j$MAKE_JOBS ARCH=arm64 O=../out \
           LLVM=1 LLVM_IAS=1 \
           CC=clang HOSTCC=clang HOSTCXX=clang++ \
@@ -396,7 +365,7 @@ jobs:
           OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
           STRIP=llvm-strip READELF=llvm-readelf \
           CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
-          LOCALVERSION="-\( {CLEAN_KERNEL}- \){CLEAN_ROM}" \
+          LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
           KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
           Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
         
