@@ -1,14 +1,14 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
-name: New env build
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }} | ${{ inputs.custom_tweaks }} | ${{ inputs.custom_hooks }}
+name: Tes Build
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }}
 
 on:
   workflow_dispatch:
     inputs:
-      zip_name:  { description: 'Zip Output Name', required: true, type: string }
+      zip_name:  { description: 'Zip Output Name', default: 'Kyy-Kernel-beryllium', required: true, type: string }
       ubuntu:    { description: 'Ubuntu Version', default: 'ubuntu-24.04', required: true, type: string }
-      kernel_name: { description: 'Kernel Name', required: true, type: string }
-      rom_type:  { description: 'ROM Type', required: true, type: string }
+      kernel_name: { description: 'Kernel Name', default: 'Kyy', required: true, type: string }
+      rom_type:  { description: 'ROM Type (cth: AOSP / MIUI)', default: 'AOSP', required: true, type: string }
       project_name: { description: 'Project Name', default: 'selea×kyy', required: true, type: string }
       compiler:
         description: 'Compiler Choice'
@@ -18,7 +18,7 @@ on:
         options: [zyc-clang, yuki-clang, weebx-clang, neutron-clang, aosp-clang, debian-clang]
       lto_mode:
         description: 'LTO Optimization'
-        default: 'no lto'
+        default: 'thin'
         required: true
         type: choice
         options: ['no lto', full, thin]
@@ -34,7 +34,18 @@ on:
       version_hash: { description: 'Include Version Hash', default: 'no hash', required: true, type: choice, options: ['no hash', hash] }
       kernel-url: { description: 'Kernel Source URL', default: 'https://github.com/kyzuna28/kyy.git', required: true, type: string }
       kernel-branch: { description: 'Kernel Source Branch', default: 'nse', required: true, type: string }
-      kernel-config: { description: 'Kernel Defconfig', default: 'beryllium_defconfig', required: true, type: string }
+      
+      # [NEW] Mode Pintar Berdasarkan Centang
+      merge_config:
+        description: 'Centang untuk MERGE MODE (vendor/xiaomi). Hapus centang untuk SINGLE MODE (arch/configs).'
+        default: true
+        type: boolean
+      kernel-config:
+        description: 'Input defconfig. (Contoh Single: beryllium_defconfig) | (Contoh Merge: mi845_defconfig, beryllium.config)'
+        default: 'mi845_defconfig, noresu.config'
+        required: true
+        type: string
+        
       anykernel-url: { description: 'AnyKernel3 Repository URL', default: 'https://github.com/kyzuna28/AnyKernel3.git', required: true, type: string }
 
 jobs:
@@ -44,7 +55,9 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      # Panggil Mesin Proses Jackman Style yang ada di folder local
+      - name: Checkout Worktree
+        uses: actions/checkout@v4
+
       - name: Run Modular Kernel Builder Engine
         uses: ./.github/workflows/build-process
         with:
@@ -61,6 +74,7 @@ jobs:
           version_hash: ${{ inputs.version_hash }}
           kernel-url: ${{ inputs.kernel-url }}
           kernel-branch: ${{ inputs.kernel-branch }}
+          merge_config: ${{ inputs.merge_config }}
           kernel-config: ${{ inputs.kernel-config }}
           anykernel-url: ${{ inputs.anykernel-url }}
           
