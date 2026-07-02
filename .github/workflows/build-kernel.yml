@@ -1,0 +1,66 @@
+# Kyzuna Project - Customized for Poco F1 (beryllium)
+name: New env build
+run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }} | ${{ inputs.custom_tweaks }} | ${{ inputs.custom_hooks }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip_name:  { description: 'Zip Output Name', required: true, type: string }
+      ubuntu:    { description: 'Ubuntu Version', default: 'ubuntu-24.04', required: true, type: string }
+      kernel_name: { description: 'Kernel Name', required: true, type: string }
+      rom_type:  { description: 'ROM Type', required: true, type: string }
+      project_name: { description: 'Project Name', default: 'selea×kyy', required: true, type: string }
+      compiler:
+        description: 'Compiler Choice'
+        default: 'aosp-clang'
+        required: true
+        type: choice
+        options: [zyc-clang, yuki-clang, weebx-clang, neutron-clang, aosp-clang, debian-clang]
+      lto_mode:
+        description: 'LTO Optimization'
+        default: 'no lto'
+        required: true
+        type: choice
+        options: ['no lto', full, thin]
+      custom_tweaks: { description: 'Tweak/Patch Kernel (.patch/.sh) via URL Repo. Pisahkan dg koma.', default: 'none', required: false, type: string }
+      kernelsu:
+        description: 'Pilih Root Method atau Fork KSU'
+        default: 'none'
+        required: true
+        type: choice
+        options: ["none", apatch, xxksu, mambosu, rsuntk, sukisu, next, resukisu, thre]
+      custom_hooks: { description: 'Script Hooks tambahan (.sh). Pisahkan dengan koma.', default: 'none', required: false, type: string }
+      extra_config: { description: "Tambah/Hapus Config manual (misal: LTO_NONE=n, KSU_SUSFS=y)", required: false, type: string, default: 'none' }
+      version_hash: { description: 'Include Version Hash', default: 'no hash', required: true, type: choice, options: ['no hash', hash] }
+      kernel-url: { description: 'Kernel Source URL', default: 'https://github.com/kyzuna28/kyy.git', required: true, type: string }
+      kernel-branch: { description: 'Kernel Source Branch', default: 'nse', required: true, type: string }
+      kernel-config: { description: 'Kernel Defconfig', default: 'beryllium_defconfig', required: true, type: string }
+      anykernel-url: { description: 'AnyKernel3 Repository URL', default: 'https://github.com/kyzuna28/AnyKernel3.git', required: true, type: string }
+
+jobs:
+  build:
+    runs-on: ${{ inputs.ubuntu }}
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      # Panggil Mesin Proses Jackman Style yang ada di folder local
+      - name: Run Modular Kernel Builder Engine
+        uses: ./.github/workflows/build-process
+        with:
+          zip_name: ${{ inputs.zip_name }}
+          kernel_name: ${{ inputs.kernel_name }}
+          rom_type: ${{ inputs.rom_type }}
+          project_name: ${{ inputs.project_name }}
+          compiler: ${{ inputs.compiler }}
+          lto_mode: ${{ inputs.lto_mode }}
+          custom_tweaks: ${{ inputs.custom_tweaks }}
+          kernelsu: ${{ inputs.kernelsu }}
+          custom_hooks: ${{ inputs.custom_hooks }}
+          extra_config: ${{ inputs.extra_config }}
+          version_hash: ${{ inputs.version_hash }}
+          kernel-url: ${{ inputs.kernel-url }}
+          kernel-branch: ${{ inputs.kernel-branch }}
+          kernel-config: ${{ inputs.kernel-config }}
+          anykernel-url: ${{ inputs.anykernel-url }}
+          
