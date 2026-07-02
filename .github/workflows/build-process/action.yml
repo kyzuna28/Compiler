@@ -1,5 +1,5 @@
 name: 'Kernel Build Engine'
-description: 'Handles Environment Cleaning, Toolchains, Patching, Compilation, Packaging, and Shipment'
+description: 'Handles Environment Cleaning, Toolchains, Config Merging, Patching, Compilation, Packaging'
 
 inputs:
   zip_name: { required: true }
@@ -15,6 +15,7 @@ inputs:
   version_hash: { required: true }
   kernel-url: { required: true }
   kernel-branch: { required: true }
+  merge_config: { required: true }
   kernel-config: { required: true }
   anykernel-url: { required: true }
 
@@ -59,7 +60,7 @@ runs:
             ;;
         esac
 
-    - name: Clone Kernel Source & Init Submodules
+    - name: Clone Kernel Source
       shell: bash
       run: |
         git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
@@ -70,8 +71,64 @@ runs:
       run: |
         cd kernel-dir
         export PATH=$HOME/tc/bin:$PATH
-        TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
+        
+        CONFIG_INPUT="${{ inputs.kernel-config }}"
+        IS_MERGE="${{ inputs.merge_config }}"
+        BASE_DIR="arch/arm64/configs"
 
+        # 🔀 MANUAL SWITCH: SINGLE OR MERGE MODE
+        if [[ "$IS_MERGE" == "true" ]]; then
+            echo "🔀 [MERGE MODE] Aktif (Folder: vendor/xiaomi/)"
+            
+            # Pisahkan input berdasarkan koma jadi array
+            IFS=',' read -ra CONF_FILES <<< "$CONFIG_INPUT"
+            
+            # Bersihkan spasi berlebih pada array
+            for i in "${!CONF_FILES[@]}"; do
+                CONF_FILES[$i]=$(echo "${CONF_FILES[$i]}" | xargs)
+            done
+
+            # Array ke-0 pasti base config
+            BASE_CONF="${CONF_FILES[0]}"
+            MAKE_DEFCONFIG="vendor/xiaomi/$BASE_CONF"
+            TARGET_CONFIG="$BASE_DIR/$MAKE_DEFCONFIG"
+
+            if [ ! -f "$TARGET_CONFIG" ]; then
+                echo "❌ [FATAL] Base config tidak ditemukan: $TARGET_CONFIG" && exit 1
+            fi
+            
+            echo "🛠️ Base config ditetapkan: $BASE_CONF"
+
+            # Looping untuk inject sisa file .config
+            for (( i=1; i<${#CONF_FILES[@]}; i++ )); do
+                FRAG="${CONF_FILES[$i]}"
+                TARGET_FRAG="$BASE_DIR/vendor/xiaomi/$FRAG"
+                if [ -f "$TARGET_FRAG" ]; then
+                    echo "🔗 Menggabungkan $FRAG ke dalam $BASE_CONF..."
+                    echo -e "\n$(cat $TARGET_FRAG)" >> "$TARGET_CONFIG"
+                else
+                    echo "⚠️ [WARN] Fragment config tidak ditemukan: $TARGET_FRAG"
+                fi
+            done
+            echo "✅ [SUKSES] Semua file config berhasil digabung!"
+            
+        else
+            echo "📄 [SINGLE MODE] Aktif (Folder: arch/arm64/configs/)"
+            # Bersihkan dari spasi (jika user tidak sengaja menambahkan spasi)
+            CLEAN_CONF=$(echo "$CONFIG_INPUT" | xargs)
+            MAKE_DEFCONFIG="$CLEAN_CONF"
+            TARGET_CONFIG="$BASE_DIR/$MAKE_DEFCONFIG"
+
+            if [ ! -f "$TARGET_CONFIG" ]; then
+                echo "❌ [FATAL] Defconfig tidak ditemukan: $TARGET_CONFIG" && exit 1
+            fi
+            echo "✅ [INFO] Memakai single config bawaan."
+        fi
+
+        # Kirim variabel MAKE_DEFCONFIG untuk step Compile Kernel
+        echo "MAKE_DEFCONFIG=$MAKE_DEFCONFIG" >> $GITHUB_ENV
+
+        # Bersihkan & Atur Penamaan Compiler Custom
         sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' "$TARGET_CONFIG" || true
         
@@ -106,9 +163,9 @@ runs:
             fi
         }
 
-        process_custom_files "${{ inputs.custom_tweaks }}" "TWEAKS"
+        process_custom_files "${{ inputs.custom_tweaks }}"
 
-        # KSU Core Processor
+        # Setup KSU Engine
         KSU_CHOICE="${{ inputs.kernelsu }}"
         if [ "$KSU_CHOICE" != "none" ] && [ "$KSU_CHOICE" != "apatch" ]; then
           enable_cfg KSU
@@ -126,8 +183,9 @@ runs:
           enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
         fi
 
-        process_custom_files "${{ inputs.custom_hooks }}" "HOOKS"
+        process_custom_files "${{ inputs.custom_hooks }}"
 
+        # LTO Mode Config Injector
         disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
         case "${{ inputs.lto_mode }}" in
           full) enable_cfg LTO LTO_CLANG LTO_CLANG_FULL ;;
@@ -135,6 +193,7 @@ runs:
           *) enable_cfg LTO_NONE ;;
         esac
 
+        # Extra Manual Configurations Injection
         EXTRA_CONFIG="${{ inputs.extra_config }}"
         if [[ "$EXTRA_CONFIG" != "none" && -n "$EXTRA_CONFIG" ]]; then
             IFS=',' read -ra CONFIGS <<< "$EXTRA_CONFIG"
@@ -161,7 +220,10 @@ runs:
 
         [[ "${{ inputs.version_hash }}" == "no hash" ]] && echo "" > .scmversion && export LOCALVERSION_AUTO="" || rm -f .scmversion
         rm -rf ../out && mkdir -p ../out
-        make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
+        
+        # Eksekusi make defconfig secara dinamis hasil Single/Merge tadi
+        echo "🛠 *Generating defconfig: $MAKE_DEFCONFIG..."
+        make ARCH=arm64 O=../out $MAKE_DEFCONFIG
 
         EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
         OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75 -mtune=cortex-a75 -falign-functions=64"
