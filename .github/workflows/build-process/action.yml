@@ -1,0 +1,212 @@
+name: 'Kernel Build Engine'
+description: 'Handles Environment Cleaning, Toolchains, Patching, Compilation, Packaging, and Shipment'
+
+inputs:
+  zip_name: { required: true }
+  kernel_name: { required: true }
+  rom_type: { required: true }
+  project_name: { required: true }
+  compiler: { required: true }
+  lto_mode: { required: true }
+  custom_tweaks: { required: true }
+  kernelsu: { required: true }
+  custom_hooks: { required: true }
+  extra_config: { required: true }
+  version_hash: { required: true }
+  kernel-url: { required: true }
+  kernel-branch: { required: true }
+  kernel-config: { required: true }
+  anykernel-url: { required: true }
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Clean Environment & Install Dependencies
+      shell: bash
+      run: |
+        sudo timedatectl set-timezone Asia/Jakarta
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+        sudo docker image prune -af
+        sudo apt-get update
+        sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev zstd libncurses6 curl wget patch lsb-release software-properties-common gnupg
+        [[ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]] && sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || sudo apt-get install --no-install-recommends -y libtinfo5
+
+    - name: Setup Dynamic Swap Space
+      shell: bash
+      run: |
+        sudo swapoff -a || true; sudo rm -f /mnt/swapfile || true
+        SWAP_SIZE=$([[ "${{ inputs.lto_mode }}" == "full" ]] && echo "16G" || echo "8G")
+        sudo fallocate -l $SWAP_SIZE /mnt/swapfile && sudo chmod 600 /mnt/swapfile && sudo mkswap /mnt/swapfile && sudo swapon /mnt/swapfile
+
+    - name: Download Toolchain
+      shell: bash
+      run: |
+        mkdir -p $HOME/tc && cd $HOME
+        case "${{ inputs.compiler }}" in
+          zyc-clang) git clone --depth=1 https://gitlab.com/clangsantoni/zyc_clang.git -b 21 tc ;;
+          yuki-clang) git clone --depth=1 https://gitlab.com/TheXPerienceProject/yuki_clang.git -b 18.0.0 tc ;;
+          weebx-clang) curl -sL https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz | tar -xz -C tc ;;
+          neutron-clang) cd tc && curl -sLO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" && chmod +x antman && ./antman -S ;;
+          aosp-clang) git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 tc ;;
+          debian-clang)
+            wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 21
+            sudo apt-get install --no-install-recommends -y clang-21 lld-21 llvm-21
+            mkdir -p tc/bin
+            echo -e '#!/bin/bash\nif [[ "$1" == "--version" || "$1" == "-v" ]]; then echo -e "Debian clang version 21.1.8\nTarget: aarch64-unknown-linux-gnu"; exit 0; fi\nexec /usr/bin/clang-21 "$@"' > tc/bin/clang
+            echo -e '#!/bin/bash\nif [[ "$1" == "--version" || "$1" == "-v" ]]; then echo "Debian LLD 21.1.8"; exit 0; fi\nexec /usr/bin/ld.lld-21 "$@"' > tc/bin/ld.lld
+            chmod +x tc/bin/*
+            for tool in ar nm objcopy objdump; do ln -sf /usr/bin/llvm-$tool-21 tc/bin/llvm-$tool; done
+            ;;
+        esac
+
+    - name: Clone Kernel Source & Init Submodules
+      shell: bash
+      run: |
+        git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+        cd kernel-dir && git submodule update --init --recursive
+
+    - name: Apply Kernel Config & Tweaks
+      shell: bash
+      run: |
+        cd kernel-dir
+        export PATH=$HOME/tc/bin:$PATH
+        TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
+
+        sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
+        sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' "$TARGET_CONFIG" || true
+        
+        COMPILER_NAME=$(echo "${{ inputs.compiler }}" | awk -F'-' '{print toupper(substr($1,1,1)) substr($1,2) " Clang"}')
+        RAW_CLANG_VER=$(clang --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+        RAW_LLD_VER=$(ld.lld --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || echo "$RAW_CLANG_VER")
+        CUSTOM_COMPILER_STRING="${COMPILER_NAME:-Debian Clang} ${RAW_CLANG_VER} ✦ Pipeline: pgo • thinlto • -o3 ✦ LLD ${RAW_LLD_VER}"
+        echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
+        sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
+
+        enable_cfg() { for cfg in "$@"; do echo "CONFIG_$cfg=y" >> "$TARGET_CONFIG"; done; }
+        disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
+
+        REPO_RAW="https://raw.githubusercontent.com/kyzuna28/Compiler/main"
+        REPO_API="https://api.github.com/repos/kyzuna28/Compiler/git/trees/main?recursive=1"
+
+        process_custom_files() {
+            local input_string="$1"
+            if [[ "$input_string" != "none" && -n "$input_string" ]]; then
+                if [[ -z "$REPO_TREE_CACHE" ]]; then
+                    export REPO_TREE_CACHE=$(curl -s "$REPO_API" | grep -o '"path": "[^"]*"' | cut -d'"' -f4)
+                fi
+                IFS=',' read -ra FILES <<< "$input_string"
+                for file in "${FILES[@]}"; do
+                    file=$(echo "$file" | xargs); [[ -z "$file" ]] && continue
+                    local FILE_PATH=$(echo "$REPO_TREE_CACHE" | grep -E "(^|/)$file$" | head -n 1)
+                    if [[ -n "$FILE_PATH" ]]; then
+                        wget -q "$REPO_RAW/$FILE_PATH" -O "$file"
+                        if [[ "$file" == *.patch ]]; then patch -p1 < "$file"; elif [[ "$file" == *.sh ]]; then chmod +x "$file" && bash "$file"; fi
+                    fi
+                done
+            fi
+        }
+
+        process_custom_files "${{ inputs.custom_tweaks }}" "TWEAKS"
+
+        # KSU Core Processor
+        KSU_CHOICE="${{ inputs.kernelsu }}"
+        if [ "$KSU_CHOICE" != "none" ] && [ "$KSU_CHOICE" != "apatch" ]; then
+          enable_cfg KSU
+          case "$KSU_CHOICE" in
+            xxksu) URL="https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" && B_NAME="master" ;;
+            mambosu) URL="https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh" && B_NAME="xxksu" ;;
+            rsuntk) URL="https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" && B_NAME="main" ;;
+            sukisu) URL="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" && B_NAME="builtin" ;;
+            next) URL="https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" && B_NAME="legacy" ;;
+            resukisu) URL="https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" && B_NAME="builtin" ;;
+            thre) URL="https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh" && B_NAME="main" ;;
+          esac
+          curl -fsSL "$URL" | bash -s "$B_NAME"
+        elif [ "$KSU_CHOICE" == "apatch" ]; then
+          enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
+        fi
+
+        process_custom_files "${{ inputs.custom_hooks }}" "HOOKS"
+
+        disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
+        case "${{ inputs.lto_mode }}" in
+          full) enable_cfg LTO LTO_CLANG LTO_CLANG_FULL ;;
+          thin) enable_cfg LTO LTO_CLANG THINLTO LTO_CLANG_THIN ;;
+          *) enable_cfg LTO_NONE ;;
+        esac
+
+        EXTRA_CONFIG="${{ inputs.extra_config }}"
+        if [[ "$EXTRA_CONFIG" != "none" && -n "$EXTRA_CONFIG" ]]; then
+            IFS=',' read -ra CONFIGS <<< "$EXTRA_CONFIG"
+            for CFG in "${CONFIGS[@]}"; do
+                CFG=$(echo "$CFG" | xargs); [[ -z "$CFG" ]] && continue
+                if [[ "$CFG" == *=n ]] || [[ "$CFG" == -* ]]; then
+                    CLEAN_CFG="${CFG%=n}"; CLEAN_CFG="${CLEAN_CFG#-}"; CLEAN_CFG="${CLEAN_CFG#CONFIG_}"; disable_cfg "$CLEAN_CFG"
+                elif [[ "$CFG" == *=y ]]; then
+                    CLEAN_CFG="${CFG%=y}"; CLEAN_CFG="${CLEAN_CFG#CONFIG_}"; enable_cfg "$CLEAN_CFG"
+                else
+                    CLEAN_CFG="${CFG#CONFIG_}"; enable_cfg "$CLEAN_CFG"
+                fi
+            done
+        fi
+
+    - name: Compile Kernel
+      shell: bash
+      run: |
+        cd kernel-dir
+        export PATH=$HOME/tc/bin:$PATH
+        export KBUILD_BUILD_USER="${{ inputs.project_name }}"
+        export KBUILD_BUILD_HOST="project"
+        export LLVM_PARALLEL=1
+
+        [[ "${{ inputs.version_hash }}" == "no hash" ]] && echo "" > .scmversion && export LOCALVERSION_AUTO="" || rm -f .scmversion
+        rm -rf ../out && mkdir -p ../out
+        make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
+
+        EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
+        OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75 -mtune=cortex-a75 -falign-functions=64"
+        
+        CORES=$(nproc --all) && MAKE_JOBS=$(( (CORES + 1) / 2 ))
+        [[ "${{ inputs.lto_mode }}" == "full" ]] && MAKE_JOBS=2
+        [[ "$MAKE_JOBS" -lt 2 ]] && MAKE_JOBS=2
+        [[ "$MAKE_JOBS" -gt 8 ]] && MAKE_JOBS=8
+
+        CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
+        CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
+        
+        make -j$MAKE_JOBS ARCH=arm64 O=../out \
+          LLVM=1 LLVM_IAS=1 CC=clang HOSTCC=clang HOSTCXX=clang++ LD=ld.lld HOSTLD=ld.lld \
+          AR=llvm-ar HOSTAR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip READELF=llvm-readelf \
+          CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
+          LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
+          KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
+          Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
+
+    - name: Package with AnyKernel3
+      shell: bash
+      run: |
+        git clone --depth=1 ${{ inputs.anykernel-url }} AnyKernel3
+        rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk,*.txt,*.md}
+        KERNEL_DIR="out/arch/arm64/boot"
+        
+        if [[ -f "$KERNEL_DIR/Image.gz" && -f "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" ]]; then
+          cat "$KERNEL_DIR/Image.gz" "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" > AnyKernel3/Image.gz-dtb
+        else
+          for img in Image.gz-dtb Image-dtb Image.gz; do
+            if [[ -f "$KERNEL_DIR/$img" ]]; then cp "$KERNEL_DIR/$img" AnyKernel3/ && break; fi
+          done
+        fi
+        [[ -f "$KERNEL_DIR/dtbo.img" ]] && cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
+        rm -f AnyKernel3/*placeholder
+        
+        CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
+        echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: "${{ env.FINAL_ARTIFACT_NAME }}"
+        path: AnyKernel3/
+        compression-level: 9
+        if-no-files-found: error
+        
