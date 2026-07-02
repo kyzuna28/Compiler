@@ -37,11 +37,11 @@ on:
       
       # [NEW] Mode Pintar Berdasarkan Centang
       merge_config:
-        description: 'Centang untuk MERGE MODE (vendor/xiaomi). Hapus centang untuk SINGLE MODE (arch/configs).'
+        description: 'merge✅|single❎'
         default: true
         type: boolean
       kernel-config:
-        description: 'Input defconfig. (Contoh Single: beryllium_defconfig) | (Contoh Merge: mi845_defconfig, beryllium.config)'
+        description: 'single defconfig | merge mi_defconfig, .config'
         default: 'mi845_defconfig, noresu.config'
         required: true
         type: string
