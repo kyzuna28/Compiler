@@ -5,10 +5,10 @@ run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs
 on:
   workflow_dispatch:
     inputs:
-      zip_name:  { description: 'Zip Output Name', default: 'Kyy-Kernel-beryllium', required: true, type: string }
+      zip_name:  { description: 'Zip Output Name', default: '', required: true, type: string }
       ubuntu:    { description: 'Ubuntu Version', default: 'ubuntu-24.04', required: true, type: string }
-      kernel_name: { description: 'Kernel Name', default: 'Kyy', required: true, type: string }
-      rom_type:  { description: 'ROM Type (cth: AOSP / MIUI)', default: 'AOSP', required: true, type: string }
+      kernel_name: { description: 'Kernel Name', default: '', required: true, type: string }
+      rom_type:  { description: 'ROM Type (cth: AOSP / MIUI)', default: '', required: true, type: string }
       project_name: { description: 'Project Name', default: 'selea×kyy', required: true, type: string }
       compiler:
         description: 'Compiler Choice'
@@ -32,7 +32,7 @@ on:
       custom_hooks: { description: 'Script Hooks tambahan (.sh). Pisahkan dengan koma.', default: 'none', required: false, type: string }
       extra_config: { description: "Tambah/Hapus Config manual (misal: LTO_NONE=n, KSU_SUSFS=y)", required: false, type: string, default: 'none' }
       version_hash: { description: 'Include Version Hash', default: 'no hash', required: true, type: choice, options: ['no hash', hash] }
-      kernel-url: { description: 'Kernel Source URL', default: 'https://github.com/kyzuna28/kyy.git', required: true, type: string }
+      kernel-url: { description: 'Kernel Source URL', default: 'https://github.com/kyzuna28/bka.git', required: true, type: string }
       kernel-branch: { description: 'Kernel Source Branch', default: 'nse', required: true, type: string }
       
       # [NEW] Mode Pintar Berdasarkan Centang
@@ -42,7 +42,7 @@ on:
         type: boolean
       kernel-config:
         description: 'single defconfig | merge mi_defconfig, .config'
-        default: 'mi845_defconfig, noresu.config'
+        default: 'defconfig'
         required: true
         type: string
         
