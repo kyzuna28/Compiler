@@ -1,6 +1,6 @@
 # Kyzuna Project - Customized for Poco F1 (beryllium)
 name: Tes merge
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernelsu }} | ${{ inputs.lto_mode }} | ${{ inputs.compiler }}
+run-name:  🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }}
 
 on:
   workflow_dispatch:
@@ -39,11 +39,11 @@ on:
         type: string
       merge_config:
         description: 'Merge Config (vendor/xiaomi) [Centang] / Single Config (arch/configs) [Hilangkan Centang]'
-        default: true
+        default: false
         type: boolean
       kernel-config:
         description: 'Nama config (cth: beryllium_defconfig atau mi_defconfig, .config)'
-        default: 'beryllium_defconfig'
+        default: 'defconfig'
         required: true
         type: string
       custom_tweaks:
@@ -460,7 +460,7 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
             LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
             KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
-            Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols"
+            Image.gz Image.gz-dtb dtbs
           
           if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
             echo "❌ [ERROR] Kernel compilation failed." && exit 1
@@ -473,6 +473,7 @@ jobs:
           echo "📥 [FETCH] Mengkloning repositori AnyKernel3..."
           git clone --depth=1 ${{ inputs.anykernel-url }} AnyKernel3
           rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk,*.txt,*.md}
+
           KERNEL_DIR="out/arch/arm64/boot"
           
           echo "⚙️ [PROSES] Menyiapkan file kernel..."
@@ -496,22 +497,26 @@ jobs:
               gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz
             fi
           fi
-          
+
           if [[ -f "$KERNEL_DIR/dtbo.img" ]]; then
             echo "💾 [INFO] Ditemukan dtbo.img, menyalin ke AnyKernel3..."
             cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
           fi
           
           rm -f AnyKernel3/*placeholder
-          
+
+          # --- Pengecekan Akhir (Status Berhasil / Gagal) ---
           echo "🔍 [CEK] Memverifikasi hasil packaging AnyKernel3..."
           if ls AnyKernel3/Image* 1> /dev/null 2>&1; then
             echo "✨ [SUKSES] File kernel berhasil dipaketkan ke dalam folder AnyKernel3!"
+            echo "🎉 [SELESAI] Siap untuk proses Upload."
           else
             echo "❌ [GAGAL] File Image kernel tidak ditemukan di folder AnyKernel3!"
+            echo "💀 [FATAL] Terjadi kesalahan saat memindahkan kernel build. Membatalkan proses..."
             exit 1
           fi
-          
+
+          echo "🏷️ [TAG] Menyiapkan nama output Artifact..."
           CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
           echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
 

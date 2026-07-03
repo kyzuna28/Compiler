@@ -7,7 +7,6 @@ on:
     inputs:
       zip_name:
         description: 'Zip Output Name'
-        default: 'Kyzuna-Kernel'
         required: true
         type: string
       ubuntu:
@@ -17,12 +16,10 @@ on:
         type: string
       kernel_name:
         description: 'Kernel Name'
-        default: 'BKA'
         required: true
         type: string
       rom_type:
         description: 'ROM Type (cth: AOSP / MIUI)'
-        default: 'AOSP'
         required: true
         type: string
       project_name:
@@ -44,7 +41,7 @@ on:
           - debian-clang
       lto_mode:
         description: 'LTO Optimization'
-        default: 'thin'
+        default: 'none'
         required: true
         type: choice
         options:
@@ -53,7 +50,7 @@ on:
           - thin
       merge_config:
         description: 'Merge Config (vendor/xiaomi) / Single Config (arch/configs)'
-        default: true
+        default: false
         type: boolean
       kernel-config:
         description: 'Nama config (cth: defconfig atau mi_defconfig, .config)'
@@ -160,12 +157,12 @@ jobs:
           cd $HOME
           
           case "${{ inputs.compiler }}" in
-            "zyc-clang") git clone --depth=1 https://gitlab.com/clangsantoni/zyc_clang.git -b 21 tc ;;
-            "yuki-clang") git clone --depth=1 https://gitlab.com/TheXPerienceProject/yuki_clang.git -b 18.0.0 tc ;;
-            "weebx-clang") curl -sL https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz | tar -xz -C tc ;;
-            "neutron-clang") cd tc && curl -sLO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" && chmod +x antman && ./antman -S=10032024 ;;
-            "aosp-clang") git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 tc ;;
-            "debian-clang")
+            zyc-clang) git clone --depth=1 https://gitlab.com/clangsantoni/zyc_clang.git -b 21 tc ;;
+            yuki-clang) git clone --depth=1 https://gitlab.com/TheXPerienceProject/yuki_clang.git -b 18.0.0 tc ;;
+            weebx-clang) curl -sL https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz | tar -xz -C tc ;;
+            neutron-clang) cd tc && curl -sLO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" && chmod +x antman && ./antman -S=10032024 ;;
+            aosp-clang) git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git -b 15.0 tc ;;
+            debian-clang)
               wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 21
               sudo apt-get install --no-install-recommends -y clang-21 lld-21 llvm-21
               mkdir -p tc/bin
@@ -181,7 +178,7 @@ jobs:
           git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
           cd kernel-dir && git submodule update --init --recursive || true
 
-      - name: 🔀 Alur 1: Merge / Single Config
+      - name: 🔀 Alur Merge / Single Config
         run: |
           cd kernel-dir
           export PATH=$HOME/tc/bin:$PATH
@@ -223,7 +220,7 @@ jobs:
           echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> $GITHUB_ENV
           sed -i 's|.*LINUX_COMPILER.*|echo \\#define LINUX_COMPILER \\"'"$CUSTOM_COMPILER_STRING"'\\"|g' scripts/mkcompile_h || true
 
-      - name: 🧩 Alur 2: Tweak .sh / .patch (Pre-KSU)
+      - name: 🧩 Alur Tweak .sh / .patch (Pre-KSU)
         run: |
           cd kernel-dir
           input_string="${{ inputs.custom_tweaks }}"
@@ -245,7 +242,7 @@ jobs:
               done
           fi
 
-      - name: 👑 Alur 3 & 4: Config KSU & Install KSU
+      - name: 👑 Alur Config KSU & Install KSU
         run: |
           cd kernel-dir
           TARGET_CONFIG="${{ env.TARGET_CONFIG }}"
@@ -265,13 +262,13 @@ jobs:
             
             # INSTALL KSU
             case "$KSU_CHOICE" in
-              "xxksu") URL="https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" && B_NAME="master" ;;
-              "mambosu") URL="https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh" && B_NAME="xxksu" ;;
-              "rsuntk") URL="https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" && B_NAME="main" ;;
-              "sukisu") URL="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" && B_NAME="builtin" ;;
-              "next") URL="https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" && B_NAME="legacy" ;;
-              "resukisu") URL="https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" && B_NAME="main" ;;
-              "thre") URL="https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh" && B_NAME="main" ;;
+              xxksu) URL="https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" && B_NAME="master" ;;
+              mambosu) URL="https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh" && B_NAME="xxksu" ;;
+              rsuntk) URL="https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" && B_NAME="main" ;;
+              sukisu) URL="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" && B_NAME="builtin" ;;
+              next) URL="https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" && B_NAME="legacy" ;;
+              resukisu) URL="https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" && B_NAME="main" ;;
+              thre) URL="https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh" && B_NAME="main" ;;
             esac
             echo "📥 Menginstall KernelSU ($KSU_CHOICE)..."
             curl -fsSL "$URL" | bash -s "$B_NAME" || exit 1
@@ -280,7 +277,7 @@ jobs:
             enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
           fi
 
-      - name: 🪝 Alur 5: Hook Script .sh / .patch (Post-KSU)
+      - name: 🪝 Alur Hook Script .sh / .patch (Post-KSU)
         run: |
           cd kernel-dir
           input_string="${{ inputs.custom_hooks }}"
@@ -302,7 +299,7 @@ jobs:
               done
           fi
 
-      - name: 🛡️ Alur 6 & 7: SuSFS Config & Enable
+      - name: 🛡️ Alur SuSFS Config & Enable
         run: |
           cd kernel-dir
           TARGET_CONFIG="${{ env.TARGET_CONFIG }}"
@@ -325,7 +322,7 @@ jobs:
             fi
           fi
 
-      - name: 💉 Alur 8: SuSFS Script / Patch (Khusus SuSFS)
+      - name: 💉 Alur SuSFS Script / Patch (Khusus SuSFS)
         run: |
           cd kernel-dir
           input_string="${{ inputs.susfs_custom }}"
@@ -347,7 +344,7 @@ jobs:
               done
           fi
 
-      - name: 🚀 Alur 9: Setup LTO Optimization
+      - name: 🚀 Alur Setup LTO Optimization
         run: |
           cd kernel-dir
           TARGET_CONFIG="${{ env.TARGET_CONFIG }}"
@@ -357,12 +354,12 @@ jobs:
 
           disable_cfg LTO LTO_CLANG_FULL LTO_CLANG_THIN LTO_CLANG THINLTO LTO_NONE
           case "${{ inputs.lto_mode }}" in
-            "full") enable_cfg LTO LTO_CLANG LTO_CLANG_FULL ;;
-            "thin") enable_cfg LTO LTO_CLANG THINLTO LTO_CLANG_THIN ;;
-            '*') enable_cfg LTO_NONE ;;
+            full) enable_cfg LTO LTO_CLANG LTO_CLANG_FULL ;;
+            thin) enable_cfg LTO LTO_CLANG THINLTO LTO_CLANG_THIN ;;
+            *) enable_cfg LTO_NONE ;;
           esac
 
-      - name: 🛠️ Alur 10: Ekstra Config Manual (Paling Akhir)
+      - name: 🛠️ Alur Ekstra Config Manual (Paling Akhir)
         run: |
           cd kernel-dir
           TARGET_CONFIG="${{ env.TARGET_CONFIG }}"
@@ -400,13 +397,13 @@ jobs:
               done
           fi
 
-      - name: 🔨 Alur 11: Compile Kernel
+      - name: 🔨 Alur Compile Kernel
         run: |
           cd kernel-dir
           export PATH=$HOME/tc/bin:$PATH
           export KBUILD_BUILD_USER="${{ inputs.project_name }}"
           export KBUILD_BUILD_HOST="project"
-          export KBUILD_COMPILER_STRING="${{ env.CUSTOM_COMPILER_STRING }}"
+          export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
           export LLVM_PARALLEL=1
 
           [[ "${{ inputs.version_hash }}" == "no hash" ]] && echo "" > .scmversion && export LOCALVERSION_AUTO="" || rm -f .scmversion
@@ -442,7 +439,7 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
             LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
             KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
-            Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols" || exit 1
+            Image.gz Image.gz-dtb dtbs
           
           if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
             echo "❌ [ERROR] Kompilasi gagal." && exit 1
@@ -450,37 +447,63 @@ jobs:
             echo "✅ [SUCCESS] Kompilasi berhasil."
           fi
           
-      - name: 📦 Alur 12: Packaging AnyKernel3 (Pro Zipping)
+      - name: Package with AnyKernel3
         run: |
+          echo "📥 [FETCH] Mengkloning repositori AnyKernel3..."
           git clone --depth=1 ${{ inputs.anykernel-url }} AnyKernel3
           rm -rf AnyKernel3/{.git,.github,LICENSE,README.md,modules,patch,ramdisk,*.txt,*.md}
+
           KERNEL_DIR="out/arch/arm64/boot"
           
+          echo "⚙️ [PROSES] Menyiapkan file kernel..."
           if [[ -f "$KERNEL_DIR/Image.gz" && -f "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" ]]; then
+            echo "📦 [BUILD] Menggabungkan Image.gz dengan Beryllium DTB..."
             cat "$KERNEL_DIR/Image.gz" "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" > AnyKernel3/Image.gz-dtb
           else
             COMPRESSED_FOUND="false"
             for img in Image.gz-dtb Image-dtb Image.gz; do
-              if [[ -f "$KERNEL_DIR/$img" ]]; then cp "$KERNEL_DIR/$img" AnyKernel3/; COMPRESSED_FOUND="true"; break; fi
+              if [[ -f "$KERNEL_DIR/$img" ]]; then 
+                echo "✅ [INFO] Ditemukan file $img, menyalin ke AnyKernel3..."
+                cp "$KERNEL_DIR/$img" AnyKernel3/
+                COMPRESSED_FOUND="true"
+                break
+              fi
             done
-            if [[ "$COMPRESSED_FOUND" != "true" && -f "$KERNEL_DIR/Image" ]]; then gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz; fi
+            
+            if [[ "$COMPRESSED_FOUND" != "true" && -f "$KERNEL_DIR/Image" ]]; then
+              echo "⚠️ [WARN] Image terkompresi tidak ditemukan!"
+              echo "🗜️ [COMPRESS] Mengompres Image mentah ke Gzip secara manual (-9)..."
+              gzip -n -9 < "$KERNEL_DIR/Image" > AnyKernel3/Image.gz
+            fi
+          fi
+
+          if [[ -f "$KERNEL_DIR/dtbo.img" ]]; then
+            echo "💾 [INFO] Ditemukan dtbo.img, menyalin ke AnyKernel3..."
+            cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
           fi
           
-          [[ -f "$KERNEL_DIR/dtbo.img" ]] && cp "$KERNEL_DIR/dtbo.img" AnyKernel3/
           rm -f AnyKernel3/*placeholder
-          
+
+          # --- Pengecekan Akhir (Status Berhasil / Gagal) ---
+          echo "🔍 [CEK] Memverifikasi hasil packaging AnyKernel3..."
+          if ls AnyKernel3/Image* 1> /dev/null 2>&1; then
+            echo "✨ [SUKSES] File kernel berhasil dipaketkan ke dalam folder AnyKernel3!"
+            echo "🎉 [SELESAI] Siap untuk proses Upload."
+          else
+            echo "❌ [GAGAL] File Image kernel tidak ditemukan di folder AnyKernel3!"
+            echo "💀 [FATAL] Terjadi kesalahan saat memindahkan kernel build. Membatalkan proses..."
+            exit 1
+          fi
+
+          echo "🏷️ [TAG] Menyiapkan nama output Artifact..."
           CLEAN_ZIP_NAME=$(echo "${{ inputs.zip_name }}" | tr ' ' '_')
           echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> $GITHUB_ENV
-          
-          echo "🗜️ Zipping manual untuk mempertahankan file permission..."
-          cd AnyKernel3
-          zip -r9 "../$CLEAN_ZIP_NAME.zip" * -x .git README.md *placeholder
-          cd ..
 
-      - name: 🚀 Upload Artifacts
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: "${{ env.FINAL_ARTIFACT_NAME }}"
-          path: "${{ env.FINAL_ARTIFACT_NAME }}.zip"
-          compression-level: 0
+          path: AnyKernel3/
+          compression-level: 9
           if-no-files-found: error
+        
