@@ -2,12 +2,15 @@
 # Patches author: backslashxx @ Github
 # Shell authon: JackA1ltman <cs2dtzq@163.com>
 # Tested kernel versions: 5.4, 4.19, 4.14, 4.9, 4.4, 3.18
-# 20250309
+# 20250309 + KSU-Next legacy kernel backport fix
 
-# fix next
+# =====================================================================
+# KSU-NEXT LEGACY KERNEL HEADER BACKPORT FIX
+# =====================================================================
 echo "======================================"
 echo "[+] Checking KernelSU-Next legacy header compatibility..."
 
+# Cari folder utama KernelSU secara otomatis (fleksibel)
 KSU_DIR=""
 if [ -d "drivers/kernelsu" ]; then
     KSU_DIR="drivers/kernelsu"
@@ -16,6 +19,7 @@ fi
 if [ -n "$KSU_DIR" ]; then
     echo "[+] Scanning all .c and .h files in $KSU_DIR for compiler_types.h..."
     
+    # Mencari semua file .c dan .h yang berisi include compiler_types.h, lalu mem-backport-nya secara otomatis
     find "$KSU_DIR" -type f \( -name "*.c" -o -name "*.h" \) -exec grep -q "compiler_types.h" {} \; -print | while read -r file; do
         echo "[+] Backporting header in: $file"
         sed -i 's|#include <linux/compiler_types.h>|#include <linux/version.h>\n#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)\n#include <linux/compiler_types.h>\n#else\n#include <linux/compiler.h>\n#endif|g' "$file"
@@ -27,6 +31,9 @@ else
 fi
 echo "======================================"
 
+# =====================================================================
+# ORIGINAL SCRIPT KERNELSYSCALL PATCH PARTS
+# =====================================================================
 patch_files=(
     fs/exec.c
     fs/open.c
@@ -364,7 +371,7 @@ extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void 
             if grep -q "__sys_setresuid" "kernel/sys.c" >/dev/null 2>&1; then
                 sed -i '/long __sys_setresuid(uid_t ruid, uid_t euid, uid_t suid)/i\#ifdef CONFIG_KSU\nextern int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid);\n#endif\n' kernel/sys.c
                 if grep -q "ruid_new" "kernel/sys.c"; then
-                    sed -i '/bool ruid_new, euid_new, suid_new;/a\#ifdef CONFIG_KSU\n\t(void)ksu_handle_setresuid(ruid, euid, suid);\n#endif\n' 文件名
+                    sed -i '/bool ruid_new, euid_new, suid_new;/a\#ifdef CONFIG_KSU\n\t(void)ksu_handle_setresuid(ruid, euid, suid);\n#endif\n' kernel/sys.c
                 else
                     sed -i '/kuid_t kruid, keuid, ksuid;/a\#ifdef CONFIG_KSU\n\t(void)ksu_handle_setresuid(ruid, euid, suid);\n#endif\n' kernel/sys.c
                 fi
