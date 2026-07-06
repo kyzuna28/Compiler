@@ -4,31 +4,26 @@
 # Tested kernel versions: 5.4, 4.19, 4.14, 4.9, 4.4, 3.18
 # 20250309
 
-# =====================================================================
-# KSU-NEXT LEGACY KERNEL HEADER FIX (TANPA MENGUBAH GIT SUBMODULE)
-# =====================================================================
+# fix next
 echo "======================================"
 echo "[+] Checking KernelSU-Next legacy header compatibility..."
 
-# Deteksi lokasi sulog.c milik KernelSU-Next
-KSU_SULOG_PATH=""
-if [ -f "drivers/kernelsu/feature/sulog.c" ]; then
-    KSU_SULOG_PATH="drivers/kernelsu/feature/sulog.c"
-elif [ -f "drivers/kernelsu/kernel/feature/sulog.c" ]; then
-    KSU_SULOG_PATH="drivers/kernelsu/kernel/feature/sulog.c"
+KSU_DIR=""
+if [ -d "drivers/kernelsu" ]; then
+    KSU_DIR="drivers/kernelsu"
 fi
 
-if [ -n "$KSU_SULOG_PATH" ]; then
-    if grep -q "compiler_types.h" "$KSU_SULOG_PATH"; then
-        echo "[+] Patching $KSU_SULOG_PATH for compiler_types.h missing error..."
-        # Mengganti include header modern ke header bawaan kernel lama secara aman menggunakan makro versi kernel
-        sed -i 's|#include <linux/compiler_types.h>|#include <linux/version.h>\n#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)\n#include <linux/compiler_types.h>\n#else\n#include <linux/compiler.h>\n#endif|g' "$KSU_SULOG_PATH"
-        echo "[+] Hot-patch compiler_types.h applied successfully!"
-    else
-        echo "[-] $KSU_SULOG_PATH already patched or header not found. Skipping."
-    fi
+if [ -n "$KSU_DIR" ]; then
+    echo "[+] Scanning all .c and .h files in $KSU_DIR for compiler_types.h..."
+    
+    find "$KSU_DIR" -type f \( -name "*.c" -o -name "*.h" \) -exec grep -q "compiler_types.h" {} \; -print | while read -r file; do
+        echo "[+] Backporting header in: $file"
+        sed -i 's|#include <linux/compiler_types.h>|#include <linux/version.h>\n#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)\n#include <linux/compiler_types.h>\n#else\n#include <linux/compiler.h>\n#endif|g' "$file"
+    done
+    
+    echo "[+] All legacy header backports applied successfully!"
 else
-    echo "[-] Warning: drivers/kernelsu/.../sulog.c not found. Skipping hot-patch."
+    echo "[-] Warning: drivers/kernelsu directory not found. Skipping header backport."
 fi
 echo "======================================"
 
