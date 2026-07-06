@@ -70,9 +70,9 @@ on:
         options:
           - "none"
           - "apatch"
-          - "xxksu"
-          - "mambosu"
-          - "rsuntk"
+          - "sorayukii"
+          - "mr-morat"
+          - "ghnkz"
           - "sukisu"
           - "next"
           - "resukisu"
@@ -247,34 +247,65 @@ jobs:
           cd kernel-dir
           TARGET_CONFIG="${{ env.TARGET_CONFIG }}"
           KSU_CHOICE="${{ inputs.kernelsu }}"
+          SUSFS_ENABLE="${{ inputs.susfs_enable }}"
           
           enable_cfg() { for cfg in "$@"; do echo "CONFIG_$cfg=y" >> "$TARGET_CONFIG"; done; }
           disable_cfg() { for cfg in "$@"; do sed -i "s/CONFIG_$cfg=.*/# CONFIG_$cfg is not set/g" "$TARGET_CONFIG" || true; echo "# CONFIG_$cfg is not set" >> "$TARGET_CONFIG"; done; }
 
-          # CONFIG KSU
-          if [ "$KSU_CHOICE" != "none" ] && [ "$KSU_CHOICE" != "apatch" ]; then
-            enable_cfg KSU
-            if [[ "$KSU_CHOICE" == "xxksu" || "$KSU_CHOICE" == "mambosu" ]]; then disable_cfg KSU_KPROBES_KSUD; fi
-            if [[ "$KSU_CHOICE" == "thre" ]]; then enable_cfg KSU_MANUAL_HOOK; disable_cfg KPROBES HAVE_KPROBES; fi
-            if [[ "$KSU_CHOICE" == "rsuntk" || "$KSU_CHOICE" == "next" || "$KSU_CHOICE" == "resukisu" ]]; then
-              [[ "${{ inputs.susfs_enable }}" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
-            fi
-            
-            # INSTALL KSU
-            case "$KSU_CHOICE" in
-              xxksu) URL="https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" && B_NAME="master" ;;
-              mambosu) URL="https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh" && B_NAME="xxksu" ;;
-              rsuntk) URL="https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" && B_NAME="main" ;;
-              sukisu) URL="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" && B_NAME="builtin" ;;
-              next) URL="https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" && B_NAME="legacy" ;;
-              resukisu) URL="https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" && B_NAME="main" ;;
-              thre) URL="https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh" && B_NAME="main" ;;
-            esac
-            echo "📥 Menginstall KernelSU ($KSU_CHOICE)..."
-            curl -fsSL "$URL" | bash -s "$B_NAME" || exit 1
-
+          # ==========================================
+          # CONFIG & INSTALL KSU
+          # ==========================================
+          echo -e "\n=== 3 & 4. CONFIG & INSTALL KSU ==="
+          
+          if [ "$KSU_CHOICE" == "none" ]; then
+            echo "🧹 [ROOT] Skip instalasi Root (Mode: none)."
           elif [ "$KSU_CHOICE" == "apatch" ]; then
+            echo "🧬 [APATCH] Menerapkan konfigurasi base APatch..."
             enable_cfg KALLSYMS KALLSYMS_ALL KALLSYMS_BASE_RELATIVE KPROBES HAVE_KPROBES
+          else
+            echo "🔑 [KSU] Menerapkan konfigurasi base KernelSU..."
+            enable_cfg KSU
+            
+            case "$KSU_CHOICE" in
+              sorayukii)
+                echo "🚀 [SORAYUKII] Instalasi menggunakan link Sorayukii..."
+                curl -LSs "https://raw.githubusercontent.com/Sorayukii/KernelSU-Next/stable/kernel/setup.sh" | bash -s hookless || exit 1
+                enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
+                disable_cfg KPROBES
+                ;;
+              mr-morat)
+                echo "🚀 [MR-MORAT] Instalasi menggunakan link Mr-Morat..."
+                curl -LSs "https://raw.githubusercontent.com/Mr-Morat/KernelSU-Next/stable/kernel/setup.sh" | bash -s syscall || exit 1
+                enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
+                disable_cfg KPROBES
+                ;;
+              ghnkz)
+                echo "🚀 [GHNKZ] Instalasi menggunakan link Ghnkz..."
+                curl -LSs "https://raw.githubusercontent.com/Ghnkz/KernelSU-Next/stable/kernel/setup.sh" | bash -s syscall || exit 1
+                enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
+                disable_cfg KPROBES
+                ;;
+              sukisu)
+                echo "🚀 [SUKISU] Instalasi fork sukisu..."
+                curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin || exit 1
+                ;;
+              next)
+                echo "🚀 [NEXT] Instalasi fork KernelSU-Next (Legacy)..."
+                curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy || exit 1
+                [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
+                ;;
+              resukisu)
+                echo "🚀 [RESUKISU] Instalasi fork ReSukiSU..."
+                curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main || exit 1
+                [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
+                ;;
+              thre)
+                echo "🚀 [THRE-NEXT] Instalasi fork Next (ThRE)..."
+                curl -LSs "https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh" | bash -s main || exit 1
+                disable_cfg KPROBES HAVE_KPROBES
+                [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
+                ;;
+            esac
           fi
 
       - name: 🪝 Alur Hook Script .sh / .patch (Post-KSU)
@@ -317,9 +348,8 @@ jobs:
               enable_cfg THREAD_INFO_IN_TASK
             fi
           else
-            if [[ "$KSU_CHOICE" == "sukisu" || "$KSU_CHOICE" == "resukisu" ]]; then
-              disable_cfg KSU_SUSFS
-            fi
+            echo "🛑 SuSFS Nonaktif. Memastikan config KSU_SUSFS dimatikan..."
+            disable_cfg KSU_SUSFS
           fi
 
       - name: 💉 Alur SuSFS Script / Patch (Khusus SuSFS)

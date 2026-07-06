@@ -59,9 +59,9 @@ on:
         options:
           - "none"
           - "apatch"
-          - "xxksu"
-          - "mambosu"
-          - "rsuntk"
+          - "sorayukii"
+          - "mr-morat"
+          - "ghnkz"
           - "sukisu"
           - "next"
           - "resukisu"
@@ -297,24 +297,27 @@ jobs:
             enable_cfg KSU
             
             case "$KSU_CHOICE" in
-              xxksu)
-                echo "🚀 [XXKSU] Instalasi fork xxksu..."
-                curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master
-                disable_cfg KSU_KPROBES_KSUD
+              sorayukii)
+                echo "🚀 [SORAYUKII] Instalasi fork Sorayukii..."
+                curl -LSs "https://raw.githubusercontent.com/Sorayukii/KernelSU-Next/stable/kernel/setup.sh" | bash -s hookless
+                enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
+                disable_cfg KPROBES
                 ;;
-              mambosu)
-                echo "🚀 [MAMBOSU] Instalasi fork mambosu..."
-                curl -LSs "https://raw.githubusercontent.com/RapliVx/KernelSU/master/kernel/setup.sh" | bash -s xxksu
-                disable_cfg KSU_KPROBES_KSUD
+              mr-morat)
+                echo "🚀 [MR-MORAT] Instalasi fork Mr-Morat..."
+                curl -LSs "https://raw.githubusercontent.com/Mr-Morat/KernelSU-Next/stable/kernel/setup.sh" | bash -s syscall
+                enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
+                disable_cfg KPROBES
                 ;;
-              rsuntk)
-                echo "🚀 [RSUNTK] Instalasi fork rsuntk..."
-                curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/refs/heads/main/kernel/setup.sh" | bash -s main
-                [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
+              ghnkz)
+                echo "🚀 [GHNKZ] Instalasi fork Ghnkz..."
+                curl -LSs "https://raw.githubusercontent.com/Ghnkz/KernelSU-Next/stable/kernel/setup.sh" | bash -s syscall
+                enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
+                disable_cfg KPROBES
                 ;;
               sukisu)
                 echo "🚀 [SUKISU] Instalasi fork sukisu..."
-                curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s old
+                curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s builtin
                 ;;
               next)
                 echo "🚀 [NEXT] Instalasi fork KernelSU-Next (Legacy)..."
@@ -323,14 +326,14 @@ jobs:
                 ;;
               resukisu)
                 echo "🚀 [RESUKISU] Instalasi fork ReSukiSU..."
-                curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s 8ebb379
+                curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s main
                 [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
                 ;;
               thre)
                 echo "🚀 [THRE-NEXT] Instalasi fork Next (ThRE)..."
                 curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main
-                enable_cfg KSU_MANUAL_HOOK
                 disable_cfg KPROBES HAVE_KPROBES
+                [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
                 ;;
             esac
           fi
