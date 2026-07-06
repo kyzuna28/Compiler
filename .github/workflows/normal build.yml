@@ -323,7 +323,7 @@ jobs:
                 ;;
               resukisu)
                 echo "🚀 [RESUKISU] Instalasi fork ReSukiSU..."
-                curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s main
+                curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s 8ebb379
                 [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
                 ;;
               thre)
