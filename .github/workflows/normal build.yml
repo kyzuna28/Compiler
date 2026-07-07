@@ -439,7 +439,7 @@ jobs:
             cp "${{ env.TARGET_CONFIG }}" "arch/arm64/configs/$BASENAME_CONFIG"
           fi
           
-          make ARCH=arm64 O=../out "$BASENAME_CONFIG"
+          make -s ARCH=arm64 O=../out "$BASENAME_CONFIG" || exit 1
           
           EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
           OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75 -mtune=cortex-a75 -falign-functions=64"
@@ -463,12 +463,13 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
             LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
             KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
-            Image.gz Image.gz-dtb dtbs
+            HOSTCFLAGS="-w" \
+            Image.gz Image.gz-dtb dtbs || { echo "❌ [ERROR] Kernel compilation failed at the error above!"; exit 1; }
           
-          if [ ! -s "../out/arch/arm64/boot/Image.gz" ] && [ ! -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
-            echo "❌ [ERROR] Kernel compilation failed." && exit 1
-          else
+          if [ -s "../out/arch/arm64/boot/Image.gz" ] || [ -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
             echo "✅ [SUCCESS] Kernel compilation successful."
+          else
+            echo "❌ [ERROR] Image.gz not found." && exit 1
           fi
           
       - name: Package with AnyKernel3
