@@ -311,7 +311,7 @@ jobs:
                 ;;
               ghnkz)
                 echo "🚀 [GHNKZ] Instalasi fork Ghnkz..."
-                curl -LSs "https://raw.githubusercontent.com/Ghnkz/KernelSU-Next/stable/kernel/setup.sh" | bash -s syscall
+                curl -LSs "https://raw.githubusercontent.com/rahmatsobrian/KernelSU-Next/dev/kernel/setup.sh" | bash -s legacy
                 enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
                 disable_cfg KPROBES
                 ;;
