@@ -311,7 +311,7 @@ jobs:
                 ;;
               ghnkz)
                 echo "🚀 [GHNKZ] Instalasi fork Ghnkz..."
-                curl -LSs "https://raw.githubusercontent.com/rahmatsobrian/KernelSU-Next/dev/kernel/setup.sh" | bash -s legacy
+                curl -LSs "https://raw.githubusercontent.com/matei9/KernelSU-Next/hookless-staging/kernel/setup.sh" | bash -s hookless-staging
                 enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
                 disable_cfg KPROBES
                 ;;
