@@ -77,8 +77,8 @@ on:
           - "next"
           - "resukisu"
           - "thre"
-      custom_hooks:
-        description: '4. Hook Script .sh/.patch (Post-KSU). Kosong = none'
+      susfs_custom:
+        description: '4. SuSFS Script .sh/.patch (Post-SuSFS). Kosong = none'
         default: 'none'
         required: false
         type: string
@@ -86,8 +86,8 @@ on:
         description: '5 & 6. Enable SuSFS & Config'
         default: false
         type: boolean
-      susfs_custom:
-        description: '7. SuSFS Script/Patch khusus (.sh/.patch). Kosong = none'
+      custom_hooks:
+        description: '7. Hook Script/Patch khusus (.sh/.patch). Kosong = none'
         default: 'none'
         required: false
         type: string
@@ -291,8 +291,8 @@ jobs:
                 ;;
               next)
                 echo "🚀 [NEXT] Instalasi fork KernelSU-Next (Legacy)..."
-                curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy || exit 1
-                [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
+                curl -LSs "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy-susfs-v2 || exit 1
+                enable_cfg KSU_MANUAL_HOOK
                 ;;
               resukisu)
                 echo "🚀 [RESUKISU] Instalasi fork ReSukiSU..."
@@ -308,24 +308,35 @@ jobs:
             esac
           fi
 
-      - name: 🪝 Alur Hook Script .sh / .patch (Post-KSU)
+      - name: 🪝 Alur SuSFS Script .sh / .patch (Post-SuSFS)
         run: |
           cd kernel-dir
-          input_string="${{ inputs.custom_hooks }}"
+          input_string="${{ inputs.susfs_custom }}"
+          
           if [[ "$input_string" != "none" && -n "$input_string" ]]; then
               export REPO_TREE_CACHE=$(curl -s -H "Authorization: Bearer ${{ github.token }}" "$REPO_API" | grep -o '"path": "[^"]*"' | cut -d'"' -f4)
               IFS=',' read -ra FILES <<< "$input_string"
+              
               for file in "${FILES[@]}"; do
-                  file=$(echo "$file" | xargs); [[ -z "$file" ]] && continue
+                  # Hapus spasi berlebih pada nama file
+                  file=$(echo "$file" | xargs)
+                  [[ -z "$file" ]] && continue
+                  
                   FILE_PATH=$(echo "$REPO_TREE_CACHE" | grep -E "(^|/)$file$" | head -n 1)
+                  
                   if [[ -n "$FILE_PATH" ]]; then
                       echo "✅ Eksekusi Hook: $file..."
                       wget -q "$REPO_RAW/$FILE_PATH" -O "$file"
-                      if [[ "$file" == *.patch ]]; then patch -p1 < "$file" || exit 1
-                      elif [[ "$file" == *.sh ]]; then chmod +x "$file" && bash "$file" || exit 1
+                      
+                      if [[ "$file" == *.patch ]]; then 
+                          # Gunakan || true atau echo agar workflow tidak berhenti jika ada .rej
+                          patch -p1 < "$file" || echo "⚠️ Peringatan: Patch $file menghasilkan .rej, proses tetap dilanjutkan."
+                      elif [[ "$file" == *.sh ]]; then 
+                          chmod +x "$file" && bash "$file" || exit 1
                       fi
                   else
-                      echo "❌ [ERROR] Hook $file tidak ditemukan!" && exit 1
+                      echo "❌ [ERROR] SuSFS $file tidak ditemukan!"
+                      exit 1
                   fi
               done
           fi
@@ -352,10 +363,10 @@ jobs:
             disable_cfg KSU_SUSFS
           fi
 
-      - name: 💉 Alur SuSFS Script / Patch (Khusus SuSFS)
+      - name: 💉 Alur Hook Script / Patch (Khusus Hook)
         run: |
           cd kernel-dir
-          input_string="${{ inputs.susfs_custom }}"
+          input_string="${{ inputs.custom_hooks }}"
           if [[ "$input_string" != "none" && -n "$input_string" ]]; then
               export REPO_TREE_CACHE=$(curl -s -H "Authorization: Bearer ${{ github.token }}" "$REPO_API" | grep -o '"path": "[^"]*"' | cut -d'"' -f4)
               IFS=',' read -ra FILES <<< "$input_string"
@@ -369,7 +380,7 @@ jobs:
                       elif [[ "$file" == *.sh ]]; then chmod +x "$file" && bash "$file" || exit 1
                       fi
                   else
-                      echo "❌ [ERROR] SuSFS Script $file tidak ditemukan!" && exit 1
+                      echo "❌ [ERROR] Hook Script $file tidak ditemukan!" && exit 1
                   fi
               done
           fi

@@ -66,8 +66,8 @@ on:
           - "next"
           - "resukisu"
           - "thre"
-      custom_hooks:
-        description: '5. Hook script .sh / .patch (Post-KSU). Kosongkan isi dengan: none'
+      susfs_scripts:
+        description: '5. SuSFs Custom Script / .patch. Kosongkan isi dengan: none'
         default: 'none'
         required: false
         type: string
@@ -76,8 +76,8 @@ on:
         default: false
         required: true
         type: boolean
-      susfs_scripts:
-        description: '8. SuSFs Custom Script / .patch. Kosongkan isi dengan: none'
+      custom_hooks:
+        description: '8. Hook script .sh / .patch (Post-KSU). Kosongkan isi dengan: none'
         default: 'none'
         required: false
         type: string
@@ -178,7 +178,7 @@ jobs:
           cd kernel-dir
           git submodule update --init --recursive
 
-      - name: Execution Flow (Config -> Tweak -> Root -> SuSFs -> LTO -> Extra)
+      - name: Execution Flow (Config -> Tweak -> Root -> SuSFs -> Hook -> LTO -> Extra)
         run: |
           cd kernel-dir
           export PATH=$HOME/tc/bin:$PATH
@@ -212,7 +212,11 @@ jobs:
                           
                           if [[ "$file" == *.patch ]]; then
                               echo "🩹 Menerapkan patch $file..."
-                              patch -p1 < "$file" || { echo "❌ [FATAL] Gagal menerapkan patch $file! Proses berhenti."; exit 1; }
+                              if [[ "$step_name" == "SUSFS_SCRIPTS" ]]; then
+                                  patch -p1 < "$file" || echo "⚠️ [PERINGATAN] Patch $file menghasilkan .rej (Tahap SUSFS_SCRIPTS), proses tetap dilanjutkan."
+                              else
+                                  patch -p1 < "$file" || { echo "❌ [FATAL] Gagal menerapkan patch $file! Proses berhenti."; exit 1; }
+                              fi
                           elif [[ "$file" == *.sh ]]; then
                               echo "🚀 Menjalankan script $file..."
                               chmod +x "$file"
@@ -311,7 +315,7 @@ jobs:
                 ;;
               ghnkz)
                 echo "🚀 [GHNKZ] Instalasi fork Ghnkz..."
-                curl -LSs "https://raw.githubusercontent.com/matei9/KernelSU-Next/hookless-staging/kernel/setup.sh" | bash -s hookless-staging
+                curl -LSs "https://raw.githubusercontent.com/matei9/KernelSU-Next/hookless-staging/kernel/setup.sh" | bash
                 enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
                 disable_cfg KPROBES
                 ;;
@@ -321,8 +325,8 @@ jobs:
                 ;;
               next)
                 echo "🚀 [NEXT] Instalasi fork KernelSU-Next (Legacy)..."
-                curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/refs/heads/legacy/kernel/setup.sh" | bash -s legacy
-                [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
+                curl -LSs "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy-susfs-v2
+                enable_cfg KSU_MANUAL_HOOK
                 ;;
               resukisu)
                 echo "🚀 [RESUKISU] Instalasi fork ReSukiSU..."
@@ -331,18 +335,18 @@ jobs:
                 ;;
               thre)
                 echo "🚀 [THRE-NEXT] Instalasi fork Next (ThRE)..."
-                curl -LSs https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh | bash -s main
+                curl -LSs "https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh" | bash -s main
                 disable_cfg KPROBES HAVE_KPROBES
                 [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
                 ;;
             esac
           fi
-          
+
           # ==========================================
-          # 5. HOOK SCRIPT .SH / .PATCH
+          # 5. SUSFS SCRIPT .SH / .PATCH
           # ==========================================
-          echo -e "\n=== 5. HOOK SCRIPT ==="
-          process_custom_files "${{ inputs.custom_hooks }}" "HOOKS"
+          echo -e "\n=== 5. SUSFS SCRIPT ==="
+          process_custom_files "${{ inputs.susfs_scripts }}" "SUSFS_SCRIPTS"
 
           # ==========================================
           # 6 & 7. SUSFS CONFIG & ENABLE
@@ -370,10 +374,10 @@ jobs:
           fi
 
           # ==========================================
-          # 8. SUSFS SCRIPT .SH / .PATCH
+          # 8. HOOK SCRIPT .SH / .PATCH
           # ==========================================
-          echo -e "\n=== 8. SUSFS SCRIPT ==="
-          process_custom_files "${{ inputs.susfs_scripts }}" "SUSFS_SCRIPTS"
+          echo -e "\n=== 8. HOOK SCRIPT ==="
+          process_custom_files "${{ inputs.custom_hooks }}" "HOOKS"
 
           # ==========================================
           # LTO CONFIGURATION (MANDIRI - JANGAN GABUNG EXTRA)

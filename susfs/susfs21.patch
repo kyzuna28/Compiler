@@ -3680,10 +3680,10 @@ index a16c72c..d447496 100644
  
  /**
   * avc_dump_query - Display a SID pair and a class in human-readable form.
-@@ -158,6 +163,19 @@ static void avc_dump_query(struct audit_buffer *ab, struct selinux_state *state,
+@@ -158,6 +163,19 @@ static void avc_dump_query(struct audit_buffer *ab, u32 ssid, u32 tsid, u16 tcla
  	}
  
- 	rc = security_sid_to_context(state, tsid, &scontext, &scontext_len);
+ 	rc = security_sid_to_context(tsid, &scontext, &scontext_len);
 +
 +#ifdef CONFIG_KSU_SUSFS
 +	if (static_branch_likely(&susfs_is_avc_log_spoofing_enabled)) {
@@ -3700,7 +3700,7 @@ index a16c72c..d447496 100644
  	if (rc)
  		audit_log_format(ab, " tsid=%d", tsid);
  	else {
-@@ -165,6 +183,9 @@ static void avc_dump_query(struct audit_buffer *ab, struct selinux_state *state,
+@@ -165,6 +183,9 @@ static void avc_dump_query(struct audit_buffer *ab, u32 ssid, u32 tsid, u16 tcla
  		kfree(scontext);
  	}
  
