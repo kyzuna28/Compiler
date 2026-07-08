@@ -22,19 +22,18 @@ if [ ! -f fs/open.c ]; then
     exit 0
 fi
 
-echo "[*] Syarat terpenuhi, menerapkan patch injeksi header..."
+echo "[*] Syarat terpenuhi, menerapkan patch injeksi header di posisi yang aman..."
 
 # 3. Looping Eksekusi Patch
 for i in "${patch_files[@]}"; do
-    # Jika file tidak ada, lewati ke file berikutnya
     [ -f "$i" ] || continue
 
     case "$i" in
     fs/open.c)
-
-        # Cek apakah include sudah ada, jika belum eksekusi sed untuk inject di baris 1
+        # Inject tepat di bawah <linux/compat.h> (Baris 33 sesuai referensi source lu)
+        # agar struct current_uid() dikenali compiler dan tidak menyebabkan error 'member reference base type int'
         grep -q "#include <linux/susfs_def.h>" "$i" || \
-        sed -i '1i #include <linux/susfs_def.h>' "$i"
+        sed -i '/#include <linux\/compat.h>/a #include <linux/susfs_def.h>' "$i"
 
         echo "  -> Patched: $i"
         ;;
