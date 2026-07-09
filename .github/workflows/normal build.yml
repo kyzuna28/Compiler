@@ -61,7 +61,7 @@ on:
           - "apatch"
           - "sorayukii"
           - "mr-morat"
-          - "ghnkz"
+          - "resu"
           - "sukisu"
           - "next"
           - "resukisu"
@@ -313,15 +313,15 @@ jobs:
                 enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
                 disable_cfg KPROBES
                 ;;
-              ghnkz)
-                echo "🚀 [GHNKZ] Instalasi fork Ghnkz..."
-                curl -LSs "https://raw.githubusercontent.com/matei9/KernelSU-Next/hookless-staging/kernel/setup.sh" | bash
-                enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
-                disable_cfg KPROBES
+              resu)
+                echo "🚀 [RESU] Instalasi fork Resu..."
+                curl -LSs "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/resukisu/kernel/setup.sh" | bash -s resukisu
+                [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
                 ;;
               sukisu)
                 echo "🚀 [SUKISU] Instalasi fork sukisu..."
-                curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s builtin
+                curl -LSs "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/sukisu/kernel/setup.sh" | bash -s sukisu
+                [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
                 ;;
               next)
                 echo "🚀 [NEXT] Instalasi fork KernelSU-Next (Legacy)..."
