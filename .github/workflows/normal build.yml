@@ -61,7 +61,7 @@ on:
           - "apatch"
           - "sorayukii"
           - "mr-morat"
-          - "resu"
+          - "enjoy"
           - "sukisu"
           - "next"
           - "resukisu"
@@ -309,18 +309,18 @@ jobs:
                 ;;
               mr-morat)
                 echo "🚀 [MR-MORAT] Instalasi fork Mr-Morat..."
-                curl -LSs "https://raw.githubusercontent.com/Mr-Morat/KernelSU-Next/stable/kernel/setup.sh" | bash -s syscall
+                curl -LSs "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" | bash -s syscall
                 enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
                 disable_cfg KPROBES
                 ;;
-              resu)
-                echo "🚀 [RESU] Instalasi fork Resu..."
-                curl -LSs "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/resukisu/kernel/setup.sh" | bash -s resukisu
-                [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
+              enjoy)
+                echo "🚀 [ENJOY] Instalasi fork Enjoy..."
+                curl -LSs "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" | bash -s enjoy
+                enable_cfg KSU_MANUAL_HOOK
                 ;;
               sukisu)
                 echo "🚀 [SUKISU] Instalasi fork sukisu..."
-                curl -LSs "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/sukisu/kernel/setup.sh" | bash -s sukisu
+                curl -LSs "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" | bash -s resukisu
                 [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
                 ;;
               next)
@@ -336,8 +336,8 @@ jobs:
               thre)
                 echo "🚀 [THRE-NEXT] Instalasi fork Next (ThRE)..."
                 curl -LSs "https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh" | bash -s main
+                enable_cfg KSU_MANUAL_HOOK
                 disable_cfg KPROBES HAVE_KPROBES
-                [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
                 ;;
             esac
           fi

@@ -72,7 +72,7 @@ on:
           - "apatch"
           - "sorayukii"
           - "mr-morat"
-          - "ghnkz"
+          - "enjoy"
           - "sukisu"
           - "next"
           - "resukisu"
@@ -275,19 +275,19 @@ jobs:
                 ;;
               mr-morat)
                 echo "🚀 [MR-MORAT] Instalasi menggunakan link Mr-Morat..."
-                curl -LSs "https://raw.githubusercontent.com/Mr-Morat/KernelSU-Next/stable/kernel/setup.sh" | bash -s syscall || exit 1
+                curl -LSs "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" | bash -s syscall || exit 1
                 enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
                 disable_cfg KPROBES
                 ;;
-              ghnkz)
-                echo "🚀 [GHNKZ] Instalasi menggunakan link Ghnkz..."
-                curl -LSs "https://raw.githubusercontent.com/Ghnkz/KernelSU-Next/stable/kernel/setup.sh" | bash -s syscall || exit 1
-                enable_cfg KSU_EXTRAS KSU_TAMPER_SYSCALL_TABLE
-                disable_cfg KPROBES
+              enjoy)
+                echo "🚀 [ENJOY] Instalasi menggunakan link Enjoy..."
+                curl -LSs "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" | bash -s enjoy || exit 1
+                enable_cfg KSU_MANUAL_HOOK
                 ;;
               sukisu)
                 echo "🚀 [SUKISU] Instalasi fork sukisu..."
-                curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin || exit 1
+                curl -LSs "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" | bash -s resukisu || exit 1
+                [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
                 ;;
               next)
                 echo "🚀 [NEXT] Instalasi fork KernelSU-Next (Legacy)..."
@@ -303,7 +303,7 @@ jobs:
                 echo "🚀 [THRE-NEXT] Instalasi fork Next (ThRE)..."
                 curl -LSs "https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh" | bash -s main || exit 1
                 disable_cfg KPROBES HAVE_KPROBES
-                [[ "$SUSFS_ENABLE" != "true" ]] && enable_cfg KSU_MANUAL_HOOK
+                enable_cfg KSU_MANUAL_HOOK
                 ;;
             esac
           fi
