@@ -315,8 +315,9 @@ jobs:
                 ;;
               enjoy)
                 echo "🚀 [ENJOY] Instalasi fork Enjoy..."
-                curl -LSs "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" | bash -s enjoy
+                curl -LSs "https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh" | bash -s v3.3.0-enjoy
                 enable_cfg KSU_MANUAL_HOOK
+                disable_cfg KPROBES HAVE_KPROBES
                 ;;
               sukisu)
                 echo "🚀 [SUKISU] Instalasi fork sukisu..."
