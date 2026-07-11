@@ -454,7 +454,7 @@ jobs:
           make -s ARCH=arm64 O=../out "$BASENAME_CONFIG" || exit 1
           
           EXTRA_CFLAGS=$([[ "${{ inputs.compiler }}" == "debian-clang" ]] && echo "--target=aarch64-linux-gnu" || echo "")
-          OPTIMIZATION_FLAGS="-O3 -mcpu=cortex-a75 -mtune=cortex-a75 -falign-functions=64"
+          OPTIMIZATION_FLAGS="-O3"
           
           CORES=$(nproc --all)
           MAKE_JOBS=$(( (CORES + 1) / 2 ))
@@ -465,6 +465,8 @@ jobs:
           CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
           echo "🚀 CPU Cores: $CORES | Used Jobs: $MAKE_JOBS"
           
+          set -o pipefail
+          
           make -j$MAKE_JOBS ARCH=arm64 O=../out \
             LLVM=1 LLVM_IAS=1 \
             CC=clang HOSTCC=clang HOSTCXX=clang++ \
@@ -474,9 +476,9 @@ jobs:
             STRIP=llvm-strip READELF=llvm-readelf \
             CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- \
             LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
-            KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments -Wno-error -fno-builtin -fomit-frame-pointer $EXTRA_CFLAGS" \
+            KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments $EXTRA_CFLAGS" \
             HOSTCFLAGS="-w" \
-            Image.gz Image.gz-dtb dtbs || { echo "❌ [ERROR] Kernel compilation failed at the error above!"; exit 1; }
+            Image.gz Image.gz-dtb dtbs 2>&1 | grep -vE "clang: warning:|ld.lld: warning:|Broken pipe|no symbols" || { echo "❌ [ERROR] Kernel compilation failed at the error above!"; exit 1; }
           
           if [ -s "../out/arch/arm64/boot/Image.gz" ] || [ -s "../out/arch/arm64/boot/Image.gz-dtb" ]; then
             echo "✅ [SUCCESS] Kernel compilation successful."

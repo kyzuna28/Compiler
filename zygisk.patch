@@ -1,0 +1,611 @@
+diff --git a/fs/Makefile b/fs/Makefile
+index cfb8af25c..f2a8e0ff9 100644
+--- a/fs/Makefile
++++ b/fs/Makefile
+@@ -134,4 +134,5 @@ obj-y				+= exofs/ # Multiple modules
+ obj-$(CONFIG_CEPH_FS)		+= ceph/
+ obj-$(CONFIG_PSTORE)		+= pstore/
+ obj-$(CONFIG_EFIVAR_FS)		+= efivarfs/
++obj-$(CONFIG_LIMITLESS) += next_hide.o
+ obj-$(CONFIG_EROFS_FS)		+= erofs/
+diff --git a/fs/namei.c b/fs/namei.c
+index c89843090..e981285b3 100644
+--- a/fs/namei.c
++++ b/fs/namei.c
+@@ -45,6 +45,8 @@
+ #include "internal.h"
+ #include "mount.h"
+ 
++#include <linux/next_hide.h>
++
+ #define CREATE_TRACE_POINTS
+ #include <trace/events/namei.h>
+ 
+@@ -3847,6 +3849,12 @@ struct file *do_filp_open(int dfd, struct filename *pathname,
+ 	int flags = op->lookup_flags;
+ 	struct file *filp;
+ 
++#ifdef CONFIG_LIMITLESS
++	if (suspicious_path(pathname)) {
++		return ERR_PTR(-ENOENT);
++	}
++#endif
++
+ 	set_nameidata(&nd, dfd, pathname);
+ 	filp = path_openat(&nd, op, flags | LOOKUP_RCU);
+ 	if (unlikely(filp == ERR_PTR(-ECHILD)))
+@@ -4047,6 +4055,19 @@ SYSCALL_DEFINE4(mknodat, int, dfd, const char __user *, filename, umode_t, mode,
+ 	int error;
+ 	unsigned int lookup_flags = 0;
+ 
++#ifdef CONFIG_LIMITLESS
++	struct filename* fname;
++	int status;
++
++	fname = getname_safe(filename);
++	status = suspicious_path(fname);
++	putname_safe(fname);
++
++	if (status) {
++		return -ENOENT;
++	}
++#endif
++
+ 	error = may_mknod(mode);
+ 	if (error)
+ 		return error;
+@@ -4127,6 +4148,19 @@ SYSCALL_DEFINE3(mkdirat, int, dfd, const char __user *, pathname, umode_t, mode)
+ 	int error;
+ 	unsigned int lookup_flags = LOOKUP_DIRECTORY;
+ 
++#ifdef CONFIG_LIMITLESS
++	struct filename* fname;
++	int status;
++
++	fname = getname_safe(pathname);
++	status = suspicious_path(fname);
++	putname_safe(fname);
++
++	if (status) {
++		return -ENOENT;
++	}
++#endif
++
+ retry:
+ 	dentry = user_path_create(dfd, pathname, &path, lookup_flags);
+ 	if (IS_ERR(dentry))
+@@ -4204,12 +4238,20 @@ static long do_rmdir(int dfd, const char __user *pathname)
+ 	struct qstr last;
+ 	int type;
+ 	unsigned int lookup_flags = 0;
++
+ retry:
+ 	name = user_path_parent(dfd, pathname,
+ 				&path, &last, &type, lookup_flags);
+ 	if (IS_ERR(name))
+ 		return PTR_ERR(name);
+ 
++#ifdef CONFIG_LIMITLESS
++	if (suspicious_path(name)) {
++		error = -ENOENT;
++		goto exit1;
++	}
++#endif
++
+ 	switch (type) {
+ 	case LAST_DOTDOT:
+ 		error = -ENOTEMPTY;
+@@ -4346,6 +4388,13 @@ static long do_unlinkat(int dfd, const char __user *pathname)
+ 	if (IS_ERR(name))
+ 		return PTR_ERR(name);
+ 
++#ifdef CONFIG_LIMITLESS
++	if (suspicious_path(name)) {
++		error = -ENOENT;
++		goto exit1;
++	}
++#endif
++
+ 	error = -EISDIR;
+ 	if (type != LAST_NORM)
+ 		goto exit1;
+@@ -4457,12 +4506,27 @@ SYSCALL_DEFINE3(symlinkat, const char __user *, oldname,
+ 	from = getname(oldname);
+ 	if (IS_ERR(from))
+ 		return PTR_ERR(from);
++
++#ifdef CONFIG_LIMITLESS
++	if (suspicious_path(from)) {
++		error = -ENOENT;
++		goto out_putname;
++	}
++#endif
++
+ retry:
+ 	dentry = user_path_create(newdfd, newname, &path, lookup_flags);
+ 	error = PTR_ERR(dentry);
+ 	if (IS_ERR(dentry))
+ 		goto out_putname;
+ 
++#ifdef CONFIG_LIMITLESS
++	if (suspicious_path(from)) {
++		error = -ENOENT;
++		goto out_putname;
++	}
++#endif
++
+ 	error = security_path_symlink(&path, dentry, from->name);
+ 	if (!error)
+ 		error = vfs_symlink2(path.mnt, path.dentry->d_inode, dentry, from->name);
+@@ -4605,12 +4669,27 @@ SYSCALL_DEFINE5(linkat, int, olddfd, const char __user *, oldname,
+ 	if (error)
+ 		return error;
+ 
++#ifdef CONFIG_LIMITLESS
++	if (is_suspicious_path(&old_path)) {
++		error = -ENOENT;
++		goto out;
++	}
++#endif
++
+ 	new_dentry = user_path_create(newdfd, newname, &new_path,
+ 					(how & LOOKUP_REVAL));
+ 	error = PTR_ERR(new_dentry);
+ 	if (IS_ERR(new_dentry))
+ 		goto out;
+ 
++#ifdef CONFIG_LIMITLESS
++	if (is_suspicious_path(&new_path)) {
++		done_path_create(&new_path, new_dentry);
++		error = -ENOENT;
++		goto out;
++	}
++#endif
++
+ 	error = -EXDEV;
+ 	if (old_path.mnt != new_path.mnt)
+ 		goto out_dput;
+@@ -4869,6 +4948,13 @@ SYSCALL_DEFINE5(renameat2, int, olddfd, const char __user *, oldname,
+ 		goto exit;
+ 	}
+ 
++#ifdef CONFIG_LIMITLESS
++	if (suspicious_path(from)) {
++		error = -ENOENT;
++		goto exit1;
++	}
++#endif
++
+ 	to = user_path_parent(newdfd, newname,
+ 				&new_path, &new_last, &new_type, lookup_flags);
+ 	if (IS_ERR(to)) {
+@@ -4876,6 +4962,13 @@ SYSCALL_DEFINE5(renameat2, int, olddfd, const char __user *, oldname,
+ 		goto exit1;
+ 	}
+ 
++#ifdef CONFIG_LIMITLESS
++	if (suspicious_path(to)) {
++		error = -ENOENT;
++		goto exit2;
++	}
++#endif
++
+ 	error = -EXDEV;
+ 	if (old_path.mnt != new_path.mnt)
+ 		goto exit2;
+diff --git a/fs/next_hide.c b/fs/next_hide.c
+new file mode 100644
+index 000000000..92dab6a04
+--- /dev/null
++++ b/fs/next_hide.c
+@@ -0,0 +1,263 @@
++#include <linux/string.h>
++#include <linux/types.h>
++#include <linux/cred.h>
++#include <linux/fs.h>
++#include <linux/path.h>
++#include <linux/slab.h>
++#include <linux/seq_file.h>
++#include <linux/printk.h>
++#include <linux/mount.h>
++#include <linux/namei.h>
++#include <linux/proc_fs.h>
++#include <linux/uaccess.h>
++#include <linux/next_hide.h>
++
++#include "mount.h"
++
++#define uid_matches() (getuid() >= 2000)
++
++#define MAX_HIDE_SIZE 2048
++
++char limitless_hide_buffer[MAX_HIDE_SIZE] = {0};
++
++static const char* const suspicious_paths[] = {
++	"/system/addon.d",
++	"/system/bin/install-recovery.sh",
++	"/vendor/bin/install-recovery.sh",
++	"/system/lib/libzygisk.so",
++	"/system/lib64/libzygisk.so",
++	"/debug_ramdisk",
++	"/dev/zygisk"
++};
++
++static const char* const suspicious_mount_types[] = {
++	"overlay"
++};
++
++static const char* const suspicious_mount_paths[] = {
++	"/apex/com.android.art/bin/dex2oat",
++	"/data/adb",
++	"/data/app",
++	"/system/apex/com.android.art/bin/dex2oat",
++	"/system/etc/preloaded-classes",
++	"/system/etc/hosts",
++	"/dev/zygisk"
++};
++
++static const char* const suspicious_mount_devices[] = {
++	"KSU"
++};
++
++static const char* const hidden_names[] = {
++	"adb",
++	"ksu",
++	"magisk",
++	"zygisk"
++};
++
++static uid_t getuid(void) {
++	const struct cred* const credentials = current_cred();
++	if (credentials == NULL) {
++		return 0;
++	}
++	return credentials->uid.val;
++}
++
++void load_limitless_hide_config(void) {
++	struct file *file;
++	loff_t pos = 0;
++	int bytes;
++	mm_segment_t old_fs;
++
++	memset(limitless_hide_buffer, 0, MAX_HIDE_SIZE);
++
++	file = filp_open("/data/system/Limitless/hide-folder.txt", O_RDONLY, 0);
++	if (IS_ERR(file)) {
++		printk(KERN_INFO "next-hide: cant open hide-folder.txt, eror: %ld\n", PTR_ERR(file));
++		return;
++	}
++
++	old_fs = get_fs();
++	set_fs(KERNEL_DS);
++	bytes = vfs_read(file, limitless_hide_buffer, MAX_HIDE_SIZE - 1, &pos);
++	set_fs(old_fs);
++	filp_close(file, NULL);
++
++	if (bytes > 0) {
++		while (bytes > 0 && (limitless_hide_buffer[bytes - 1] == '\n' || limitless_hide_buffer[bytes - 1] == '\r')) {
++			limitless_hide_buffer[bytes - 1] = '\0';
++			bytes--;
++		}
++		printk(KERN_INFO "next-hide: Add list: %s\n", limitless_hide_buffer);
++	}
++}
++
++static ssize_t next_hide_write(struct file *file, const char __user *buffer, size_t count, loff_t *pos) {
++	load_limitless_hide_config();
++	return count;
++}
++
++static const struct file_operations next_hide_fops = {
++	.owner = THIS_MODULE,
++	.write = next_hide_write,
++};
++
++int is_suspicious_path(const struct path* const file)
++{
++	size_t index = 0, size = 4096;
++	int res = -1, status = 0;
++	char *path = NULL, *ptr = NULL, *end = NULL;
++	
++	if (!uid_matches() || file == NULL) {
++		status = 0;
++		goto out;
++	}
++	
++	path = kmalloc(size, GFP_KERNEL);
++	if (path == NULL) {
++		status = -1;
++		goto out;
++	}
++	
++	ptr = d_path(file, path, size);
++	if (IS_ERR(ptr)) {
++		status = -1;
++		goto out;
++	}
++	
++	end = mangle_path(path, ptr, " \t\n\\");
++	if (!end) {
++		status = -1;
++		goto out;
++	}
++	
++	res = end - path;
++	path[(size_t) res] = '\0';
++	
++	for (index = 0; index < ARRAY_SIZE(suspicious_paths); index++) {
++		const char* const name = suspicious_paths[index];
++		if (memcmp(name, path, strlen(name)) == 0) {
++			printk(KERN_INFO "next-hide: file access to '%s' denied for UID %i\n", name, getuid());
++			status = 1;
++			goto out;
++		}
++	}
++	
++out:
++	kfree(path);
++	return status;
++}
++
++int suspicious_path(const struct filename* const name)
++{
++	int status = 0, ret = 0;
++	struct path path;
++	
++	if (IS_ERR(name)) {
++		return -1;
++	}
++	if (!uid_matches() || name == NULL) {
++		return 0;
++	}
++	
++	ret = kern_path(name->name, LOOKUP_FOLLOW, &path);
++	if (!ret) {
++		status = is_suspicious_path(&path);
++		path_put(&path);
++	}
++	return status;
++}
++
++int is_suspicious_mount(struct vfsmount* const mnt, const struct path* const root)
++{
++	size_t index = 0, size = 4096;
++	int res = -1, status = 0;
++	char* path = NULL, *ptr = NULL, *end = NULL;
++	struct path mnt_path = { .dentry = mnt->mnt_root, .mnt = mnt };
++	struct mount* real = real_mount(mnt);
++	
++	if (!uid_matches()) {
++		status = 0;
++		goto out;
++	}
++	
++	for (index = 0; index < ARRAY_SIZE(suspicious_mount_types); index++) {
++		const char* const name = suspicious_mount_types[index];
++		if (strcmp(mnt->mnt_root->d_sb->s_type->name, name) == 0) {
++			status = 1;
++			goto out;
++		}
++	}
++	
++	path = kmalloc(size, GFP_KERNEL);
++	if (path == NULL) {
++		status = -1;
++		goto out;
++	}
++	
++	ptr = __d_path(&mnt_path, root, path, size);
++	if (!ptr) {
++		status = -1;
++		goto out;
++	}
++	
++	end = mangle_path(path, ptr, " \t\n\\");
++	if (!end) {
++		status = -1;
++		goto out;
++	}
++	
++	res = end - path;
++	path[(size_t) res] = '\0';
++	
++	for (index = 0; index < ARRAY_SIZE(suspicious_mount_paths); index++) {
++		const char* const name = suspicious_mount_paths[index];
++		if (memcmp(path, name, strlen(name)) == 0) {
++			status = 1;
++			goto out;
++		}
++	}
++	
++	for (index = 0; index < ARRAY_SIZE(suspicious_mount_devices); index++) {
++		const char* const name = suspicious_mount_devices[index];
++		if (real->mnt_devname != NULL && strcmp(real->mnt_devname, name) == 0) {
++			status = 1;
++			goto out;
++		}
++	}
++	
++out:
++	kfree(path);
++	return status;
++}
++
++int is_hidden_name(const char *name, int namlen)
++{
++	size_t index;
++
++	if (name == NULL || namlen <= 0) {
++		return 0;
++	}
++
++	if (uid_matches()) {
++		for (index = 0; index < ARRAY_SIZE(hidden_names); index++) {
++			if (strnstr(name, hidden_names[index], namlen) != NULL) {
++				return 1;
++			}
++		}
++	}
++
++	if (strlen(limitless_hide_buffer) > 0) {
++		if (strnstr(limitless_hide_buffer, name, strlen(limitless_hide_buffer)) != NULL) {
++			return 1;
++		}
++	}
++
++	return 0;
++}
++
++static int __init init_next_hide(void) {
++	proc_create("next_hide_refresh", 0222, NULL, &next_hide_fops);
++	return 0;
++}
++fs_initcall(init_next_hide);
+diff --git a/fs/open.c b/fs/open.c
+index 018553791..1d59926e5 100644
+--- a/fs/open.c
++++ b/fs/open.c
+@@ -37,6 +37,8 @@
+ 
+ #include "internal.h"
+ 
++#include <linux/next_hide.h>
++
+ int do_truncate2(struct vfsmount *mnt, struct dentry *dentry, loff_t length,
+ 		unsigned int time_attrs, struct file *filp)
+ {
+@@ -80,6 +82,12 @@ long vfs_truncate(const struct path *path, loff_t length)
+ 	struct dentry *upperdentry;
+ 	long error;
+ 
++#ifdef CONFIG_LIMITLESS
++	if (is_suspicious_path(path)) {
++		return -ENOENT;
++	}
++#endif
++
+ 	inode = path->dentry->d_inode;
+ 	mnt = path->mnt;
+ 
+@@ -558,6 +566,12 @@ static int chmod_common(const struct path *path, umode_t mode)
+ 	struct iattr newattrs;
+ 	int error;
+ 
++#ifdef CONFIG_LIMITLESS
++	if (is_suspicious_path(path)) {
++		return -ENOENT;
++	}
++#endif
++
+ 	error = mnt_want_write(path->mnt);
+ 	if (error)
+ 		return error;
+@@ -625,6 +639,12 @@ static int chown_common(const struct path *path, uid_t user, gid_t group)
+ 	kuid_t uid;
+ 	kgid_t gid;
+ 
++#ifdef CONFIG_LIMITLESS
++	if (is_suspicious_path(path)) {
++		return -ENOENT;
++	}
++#endif
++
+ 	uid = make_kuid(current_user_ns(), user);
+ 	gid = make_kgid(current_user_ns(), group);
+ 
+diff --git a/fs/readdir.c b/fs/readdir.c
+index 4a0fb3c30..53b03ad41 100644
+--- a/fs/readdir.c
++++ b/fs/readdir.c
+@@ -25,6 +25,7 @@ extern bool susfs_is_inode_sus_path(struct inode *inode);
+ #endif
+ 
+ #include <asm/uaccess.h>
++#include <linux/next_hide.h>
+ 
+ int iterate_dir(struct file *file, struct dir_context *ctx)
+ {
+@@ -255,6 +256,13 @@ static int filldir(struct dir_context *ctx, const char *name, int namlen,
+ #ifdef CONFIG_KSU_SUSFS_SUS_PATH
+ 	struct inode *inode;
+ #endif
++
++#ifdef CONFIG_LIMITLESS
++	if (is_hidden_name(name, namlen)) {
++		return 0;
++	}
++#endif
++
+ 	buf->error = verify_dirent_name(name, namlen);
+ 	if (unlikely(buf->error))
+ 		return buf->error;
+@@ -382,6 +390,12 @@ static int filldir64(struct dir_context *ctx, const char *name, int namlen,
+ 	struct inode *inode;
+ #endif
+ 
++#ifdef CONFIG_LIMITLESS
++	if (is_hidden_name(name, namlen)) {
++		return 0;
++	}
++#endif
++
+ 	buf->error = verify_dirent_name(name, namlen);
+ 	if (unlikely(buf->error))
+ 		return buf->error;
+diff --git a/fs/stat.c b/fs/stat.c
+index 60b3c3ce9..3a1eaf301 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -17,6 +17,7 @@
+ 
+ #include <asm/uaccess.h>
+ #include <asm/unistd.h>
++#include <linux/next_hide.h>
+ 
+ #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+ extern void susfs_sus_kstat_spoof_generic_fillattr(struct inode *inode, struct kstat *stat);
+@@ -124,6 +125,12 @@ int vfs_getattr(const struct path *path, struct kstat *stat,
+ {
+ 	int retval;
+ 
++#ifdef CONFIG_LIMITLESS
++	if (is_suspicious_path(path)) {
++		return -ENOENT;
++	}
++#endif
++
+ 	retval = security_inode_getattr(path);
+ 	if (retval)
+ 		return retval;
+diff --git a/include/linux/next_hide.h b/include/linux/next_hide.h
+new file mode 100644
+index 000000000..72f392ae6
+--- /dev/null
++++ b/include/linux/next_hide.h
+@@ -0,0 +1,25 @@
++#ifndef _LINUX_NEXT_HIDE_H_
++#define _LINUX_NEXT_HIDE_H_
++
++#include <linux/fs.h>
++#include <linux/mount.h>
++
++#define getname_safe(name) (name == NULL ? ERR_PTR(-EINVAL) : getname(name))
++#define putname_safe(name) (IS_ERR(name) ? NULL : putname(name))
++
++#ifdef CONFIG_LIMITLESS
++
++int is_suspicious_path(const struct path* const file);
++int is_suspicious_mount(struct vfsmount* const mnt, const struct path* const root);
++int suspicious_path(const struct filename* const name);
++int is_hidden_name(const char *name, int namlen);
++
++#else
++
++static inline int is_suspicious_path(const struct path* const file) { return 0; }
++static inline int is_suspicious_mount(struct vfsmount* const mnt, const struct path* const root) { return 0; }
++static inline int suspicious_path(const struct filename* const name) { return 0; }
++static inline int is_hidden_name(const char *name, int namlen) { return 0; }
++
++#endif
++#endif
