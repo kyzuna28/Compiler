@@ -1,53 +1,50 @@
 #!/bin/bash
 # ==========================================================================
-# Patch Droidspaces for Kernel (Pure Bash Script)
-# Merged and cleaned script - No Env Checking
+# Patch Droidspaces for Kernel
+# Pro Version - Workflow Optimized (Auto-Install spatch)
 # ==========================================================================
 
 echo "[*] ========================================"
 echo "[*] Memulai Patch Droidspaces"
 echo "[*] ========================================"
 
-# 1. Validasi Dependency (spatch) - Tetap diperlukan untuk Coccinelle
+# Auto-Install Dependency (Coccinelle)
 if ! command -v spatch &> /dev/null; then
-    echo "[!] Error: Perintah 'spatch' (Coccinelle) tidak ditemukan."
-    echo "    Install dulu dengan: sudo apt install coccinelle"
+    echo "[*] 'spatch' tidak ditemukan. Menginstal Coccinelle..."
+    sudo apt-get update -y > /dev/null 2>&1
+    sudo apt-get install --no-install-recommends -y coccinelle > /dev/null 2>&1
+    
+    if ! command -v spatch &> /dev/null; then
+        echo "[!] Error: Gagal menginstal Coccinelle! Hentikan proses."
+        exit 1
+    else
+        echo "  -> [OK] Coccinelle terinstal."
+    fi
+fi
+
+if [ -z "$TARGET_CONFIG" ] || [ ! -f "$TARGET_CONFIG" ]; then
+    echo "[!] Error: Variabel TARGET_CONFIG tidak valid!"
     exit 1
 fi
 
-# 2. Clone / Sinkronisasi Repository untuk ngambil file sumber
 REPO_URL="https://github.com/kyzuna28/Compiler.git"
 REPO_DIR="/tmp/Compiler_Repo"
 
 if [ ! -d "$REPO_DIR" ]; then
-    echo "[*] Mengunduh repository patch..."
-    git clone --depth=1 "$REPO_URL" "$REPO_DIR" -q || { echo "[!] Error: Gagal clone repo."; exit 1; }
+    git clone --depth=1 "$REPO_URL" "$REPO_DIR" -q || { echo "[!] Error: Gagal clone repo patch."; exit 1; }
 fi
 
-# Auto-mencari file Droidspaces di Repo
 CONFIG_SRC=$(find "$REPO_DIR" -type f -name "droidspaces.config" | head -n 1)
 COCCI_CGROUP=$(find "$REPO_DIR" -type f -name "fix_restore_cgroup_file_prefix_handling.cocci" | head -n 1)
 COCCI_XT=$(find "$REPO_DIR" -type f -name "fix_kernel_panic_in_xt_qtaguid.cocci" | head -n 1)
 
-# 3. Cari defconfig yang sedang digunakan (Otomatis tanpa KERNEL_ARCH)
-TARGET_CONFIG=$(grep -Rsl "^CONFIG_KSU=y" arch/*/configs 2>/dev/null | head -n1)
-
-if [ -z "$TARGET_CONFIG" ]; then
-    echo "Skip: Defconfig aktif tidak ditemukan (Pastikan dijalankan di dalam root folder kernel)."
-    exit 0
-fi
-
-echo "[*] Using config: $TARGET_CONFIG"
-
-# Tentukan folder tujuan (otomatis ngikutin path defconfig yang ketemu)
 CONFIG_DEST=$(dirname "$TARGET_CONFIG")
 
-# 4. Salin konfigurasi Droidspaces
 if [ -n "$CONFIG_SRC" ] && [ -d "$CONFIG_DEST" ]; then
     cp "$CONFIG_SRC" "$CONFIG_DEST/"
-    echo "  -> [OK] droidspaces.config berhasil disalin ke $CONFIG_DEST."
+    echo "  -> [OK] droidspaces.config disalin ke $CONFIG_DEST"
 else
-    echo "[!] Error: File config atau direktori tujuan tidak ditemukan."
+    echo "[!] Error: File config Droidspaces tidak ditemukan."
     exit 1
 fi
 
@@ -71,16 +68,12 @@ apply_cocci_patch() {
     fi
 }
 
-echo "[*] Memulai eksekusi Coccinelle patch..."
-
-# 5. Patch xt_qtaguid.c
+# 1. Patch xt_qtaguid.c
 if [ -f "net/netfilter/xt_qtaguid.c" ]; then
     apply_cocci_patch "net/netfilter/xt_qtaguid.c" "$COCCI_XT"
-else
-    echo "  -> [SKIP] net/netfilter/xt_qtaguid.c tidak ditemukan."
 fi
 
-# 6. Patch cgroup.c
+# 2. Patch cgroup.c
 CGROUP_FILE=""
 if [ -f "kernel/cgroup/cgroup.c" ]; then
     CGROUP_FILE="kernel/cgroup/cgroup.c"
@@ -94,9 +87,6 @@ if [ -n "$CGROUP_FILE" ]; then
     else
         echo "  -> [SKIP] $CGROUP_FILE sudah ter-patch."
     fi
-else
-    echo "  -> [SKIP] File cgroup tidak ditemukan."
 fi
 
 echo "[+] Done: Patch Droidspaces terpasang."
-echo "========================================"
