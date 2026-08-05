@@ -1,362 +1,578 @@
-From dcbdb540890e043eda449c9cd5341a3aa29220f3 Mon Sep 17 00:00:00 2001
+From d3b6a8d49346540bed4452ff7c85068df8230e17 Mon Sep 17 00:00:00 2001
 From: kyzuna28 <dzakysptr28@gmail.com>
-Date: Sun, 12 Jul 2026 00:06:33 +0700
-Subject: [PATCH] audio mic settings add
+Date: Fri, 3 Jul 2026 23:36:47 +0700
+Subject: [PATCH] tweak_limit
 
 ---
- techpack/audio/asoc/codecs/wcd934x/wcd934x.c | 259 ++++++++++++++-----
- 1 file changed, 201 insertions(+), 58 deletions(-)
+ .gitignore                              |   2 +-
+ arch/arm64/boot/dts/qcom/sdm845-v2.dtsi | 129 ++++++++++++++++++------
+ arch/arm64/boot/dts/qcom/smb1355.dtsi   |  10 ++
+ drivers/clk/qcom/clk-cpu-osm.c          |  44 ++++++++
+ drivers/clk/qcom/gpucc-sdm845.c         |  25 ++---
+ drivers/power/supply/qcom/qpnp-smb2.c   |   4 +
+ drivers/power/supply/qcom/smb5-lib.c    |   5 +
+ fs/proc/version.c                       |  17 ++++
+ fs/sdcardfs/sdcardfs.h                  |   3 +
+ init/Kconfig                            |   7 ++
+ init/version.c                          | 115 +++++++++++++++++++++
+ 11 files changed, 316 insertions(+), 45 deletions(-)
 
-diff --git a/techpack/audio/asoc/codecs/wcd934x/wcd934x.c b/techpack/audio/asoc/codecs/wcd934x/wcd934x.c
-index 4be6e94fc..3420edf5a 100644
---- a/techpack/audio/asoc/codecs/wcd934x/wcd934x.c
-+++ b/techpack/audio/asoc/codecs/wcd934x/wcd934x.c
-@@ -51,6 +51,8 @@
- #include "../wcdcal-hwdep.h"
- #include "wcd934x-dsd.h"
+diff --git a/.gitignore b/.gitignore
+index 32401e548..af96e137c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -124,4 +124,4 @@ kernel/configs/android-*.cfg
+ #
+ Android.bp
  
-+#define CONFIG_SOUND_CONTROL
+-/out
+\ No newline at end of file
++/out/
+\ No newline at end of file
+diff --git a/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi b/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi
+index 51ccc1caf..267475c78 100644
+--- a/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi
++++ b/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi
+@@ -576,7 +576,7 @@
+ &msm_gpu {
+ 	/* Updated chip ID */
+ 	qcom,chipid = <0x06030001>;
+-	qcom,initial-pwrlevel = <8>;
++	qcom,initial-pwrlevel = <6>;
+ 
+ 	qcom,gpu-pwrlevels {
+ 		#address-cells = <1>;
+@@ -584,85 +584,154 @@
+ 
+ 		compatible = "qcom,gpu-pwrlevels";
+ 
++		#ifdef CONFIG_LIMITLESS
 +
- #define WCD934X_RATES_MASK (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |\
- 			    SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_48000 |\
- 			    SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_192000 |\
-@@ -159,6 +161,12 @@ enum {
- 	POWER_RESUME,
+ 		qcom,gpu-pwrlevel@0 {
+ 			reg = <0>;
+-			qcom,gpu-freq = <810000000>;
+-			qcom,bus-freq = <12>;
+-			qcom,bus-min = <12>;
++			qcom,gpu-freq = <780000000>;
++			qcom,bus-freq = <11>;
++			qcom,bus-min = <10>;
+ 			qcom,bus-max = <12>;
+ 		};
+ 
+ 		qcom,gpu-pwrlevel@1 {
+ 			reg = <1>;
+ 			qcom,gpu-freq = <710000000>;
+-			qcom,bus-freq = <12>;
+-			qcom,bus-min = <12>;
+-			qcom,bus-max = <12>;
++			qcom,bus-freq = <10>;
++			qcom,bus-min = <9>;
++			qcom,bus-max = <11>;
+ 		};
+ 
+ 		qcom,gpu-pwrlevel@2 {
+ 			reg = <2>;
+ 			qcom,gpu-freq = <675000000>;
++			qcom,bus-freq = <9>;
++			qcom,bus-min = <8>;
++			qcom,bus-max = <10>;
++		};
++
++		qcom,gpu-pwrlevel@3 {
++			reg = <3>;
++			qcom,gpu-freq = <520000000>;
++			qcom,bus-freq = <7>;
++			qcom,bus-min = <6>;
++			qcom,bus-max = <8>;
++		};
++
++		qcom,gpu-pwrlevel@4 {
++			reg = <4>;
++			qcom,gpu-freq = <414000000>;
++			qcom,bus-freq = <6>;
++			qcom,bus-min = <5>;
++			qcom,bus-max = <7>;
++		};
++
++		qcom,gpu-pwrlevel@5 {
++			reg = <5>;
++			qcom,gpu-freq = <342000000>;
++			qcom,bus-freq = <4>;
++			qcom,bus-min = <3>;
++			qcom,bus-max = <5>;
++		};
++
++		qcom,gpu-pwrlevel@6 {
++			reg = <6>;
++			qcom,gpu-freq = <257000000>;
++			qcom,bus-freq = <3>;
++			qcom,bus-min = <2>;
++			qcom,bus-max = <4>;
++		};
++
++		qcom,gpu-pwrlevel@7 {
++			reg = <7>;
++			qcom,gpu-freq = <180000000>;
++			qcom,bus-freq = <2>;
++			qcom,bus-min = <1>;
++			qcom,bus-max = <3>;
++		};
++
++		qcom,gpu-pwrlevel@8 {
++			reg = <8>;
++			qcom,gpu-freq = <0>;
++			qcom,bus-freq = <0>;
++			qcom,bus-min = <0>;
++			qcom,bus-max = <0>;
++		};
++
++#else
++
++		qcom,gpu-pwrlevel@0 {
++			reg = <0>;
++			qcom,gpu-freq = <780000000>;
++			qcom,bus-freq = <12>;
++			qcom,bus-min = <12>;
++			qcom,bus-max = <12>;
++		};
++
++		qcom,gpu-pwrlevel@1 {
++			reg = <1>;
++			qcom,gpu-freq = <710000000>;
+ 			qcom,bus-freq = <12>;
+ 			qcom,bus-min = <10>;
+ 			qcom,bus-max = <12>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@3 {
+-			reg = <3>;
+-			qcom,gpu-freq = <596000000>;
+-			qcom,bus-freq = <10>;
++		qcom,gpu-pwrlevel@2 {
++			reg = <2>;
++			qcom,gpu-freq = <675000000>;
++			qcom,bus-freq = <11>;
+ 			qcom,bus-min = <9>;
+ 			qcom,bus-max = <12>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@4 {
+-			reg = <4>;
++		qcom,gpu-pwrlevel@3 {
++			reg = <3>;
+ 			qcom,gpu-freq = <520000000>;
+ 			qcom,bus-freq = <9>;
+ 			qcom,bus-min = <8>;
+-			qcom,bus-max = <11>;
++			qcom,bus-max = <12>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@5 {
+-			reg = <5>;
++		qcom,gpu-pwrlevel@4 {
++			reg = <4>;
+ 			qcom,gpu-freq = <414000000>;
+ 			qcom,bus-freq = <8>;
+ 			qcom,bus-min = <7>;
+-			qcom,bus-max = <9>;
++			qcom,bus-max = <10>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@6 {
+-			reg = <6>;
++		qcom,gpu-pwrlevel@5 {
++			reg = <5>;
+ 			qcom,gpu-freq = <342000000>;
+ 			qcom,bus-freq = <6>;
+ 			qcom,bus-min = <5>;
+-			qcom,bus-max = <7>;
++			qcom,bus-max = <8>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@7 {
+-			reg = <7>;
++		qcom,gpu-pwrlevel@6 {
++			reg = <6>;
+ 			qcom,gpu-freq = <257000000>;
+ 			qcom,bus-freq = <4>;
+ 			qcom,bus-min = <3>;
+-			qcom,bus-max = <5>;
++			qcom,bus-max = <6>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@8 {
+-			reg = <8>;
++		qcom,gpu-pwrlevel@7 {
++			reg = <7>;
+ 			qcom,gpu-freq = <180000000>;
+-			qcom,bus-freq = <2>;
+-			qcom,bus-min = <1>;
+-			qcom,bus-max = <3>;
++			qcom,bus-freq = <3>;
++			qcom,bus-min = <2>;
++			qcom,bus-max = <4>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@9 {
+-			reg = <9>;
++		qcom,gpu-pwrlevel@8 {
++			reg = <8>;
+ 			qcom,gpu-freq = <0>;
+ 			qcom,bus-freq = <0>;
+ 			qcom,bus-min = <0>;
+ 			qcom,bus-max = <0>;
+ 		};
++#endif
+ 	};
  };
  
-+#ifdef CONFIG_SOUND_CONTROL
-+static struct snd_soc_codec *sound_control_codec_ptr;
-+static int custom_hp_left = 0;
-+static int custom_hp_right = 0;
+diff --git a/arch/arm64/boot/dts/qcom/smb1355.dtsi b/arch/arm64/boot/dts/qcom/smb1355.dtsi
+index 5939440cf..dae1cc6d9 100644
+--- a/arch/arm64/boot/dts/qcom/smb1355.dtsi
++++ b/arch/arm64/boot/dts/qcom/smb1355.dtsi
+@@ -38,6 +38,11 @@ smb1355_0: qcom,smb1355@8 {
+ 		interrupt-parent = <&smb1355_0>;
+ 		status = "disabled";
+ 
++#ifdef CONFIG_LIMITLESS
++		qcom,fastchg-current-ma = <2800>;
++		qcom,hc-mode-current-max-ma = <2800>;
 +#endif
 +
- static int dig_core_collapse_enable = 1;
- module_param(dig_core_collapse_enable, int, 0664);
- MODULE_PARM_DESC(dig_core_collapse_enable, "enable/disable power gating");
-@@ -1462,6 +1470,13 @@ static int slim_rx_mux_put(struct snd_kcontrol *kcontrol,
- 	snd_soc_dapm_mux_update_power(widget->dapm, kcontrol,
- 				      rx_port_value, e, update);
+ 		io-channels = <&pmi8998_rradc 2>,
+ 			      <&pmi8998_rradc 12>;
+ 		io-channel-names = "charger_temp",
+@@ -85,6 +90,11 @@ smb1355_1: qcom,smb1355@c {
+ 		interrupt-parent = <&smb1355_1>;
+ 		status = "disabled";
  
-+#ifdef CONFIG_SOUND_CONTROL
-+	snd_soc_write(sound_control_codec_ptr, WCD934X_CDC_RX1_RX_VOL_MIX_CTL, custom_hp_left);
-+	snd_soc_write(sound_control_codec_ptr, WCD934X_CDC_RX2_RX_VOL_MIX_CTL, custom_hp_right);
-+	snd_soc_write(sound_control_codec_ptr, WCD934X_CDC_RX1_RX_VOL_CTL, custom_hp_left);
-+	snd_soc_write(sound_control_codec_ptr, WCD934X_CDC_RX2_RX_VOL_CTL, custom_hp_right);
++#ifdef CONFIG_LIMITLESS
++		qcom,fastchg-current-ma = <2800>;
++		qcom,hc-mode-current-max-ma = <2800>;
 +#endif
 +
- 	return 0;
- err:
- 	mutex_unlock(&tavil_p->codec_mutex);
-@@ -2100,7 +2115,7 @@ static int tavil_codec_enable_spkr_anc(struct snd_soc_dapm_widget *w,
- 	switch (event) {
- 	case SND_SOC_DAPM_PRE_PMU:
- 		ret = tavil_codec_enable_anc(w, kcontrol, event);
--		schedule_delayed_work(&tavil->spk_anc_dwork.dwork,
-+		queue_delayed_work(system_power_efficient_wq, &tavil->spk_anc_dwork.dwork,
- 				      msecs_to_jiffies(spk_anc_en_delay));
- 		break;
- 	case SND_SOC_DAPM_POST_PMD:
-@@ -4473,11 +4488,11 @@ static int tavil_codec_enable_dec(struct snd_soc_dapm_widget *w,
- 			snd_soc_update_bits(codec, hpf_gate_reg, 0x02, 0x00);
- 		}
- 		/* schedule work queue to Remove Mute */
--		schedule_delayed_work(&tavil->tx_mute_dwork[decimator].dwork,
-+		queue_delayed_work(system_power_efficient_wq, &tavil->tx_mute_dwork[decimator].dwork,
- 				      msecs_to_jiffies(tx_unmute_delay));
- 		if (tavil->tx_hpf_work[decimator].hpf_cut_off_freq !=
- 							CF_MIN_3DB_150HZ)
--			schedule_delayed_work(
-+			queue_delayed_work(system_power_efficient_wq,
- 					&tavil->tx_hpf_work[decimator].dwork,
- 					msecs_to_jiffies(300));
- 		/* apply gain after decimator is enabled */
-@@ -6314,77 +6329,81 @@ static const struct snd_kcontrol_new tavil_snd_controls[] = {
- 	SOC_SINGLE_TLV("ADC3 Volume", WCD934X_ANA_AMIC3, 0, 20, 0, analog_gain),
- 	SOC_SINGLE_TLV("ADC4 Volume", WCD934X_ANA_AMIC4, 0, 20, 0, analog_gain),
+ 		io-channels = <&pmi8998_rradc 2>,
+ 			      <&pmi8998_rradc 12>;
+ 		io-channel-names = "charger_temp",
+diff --git a/drivers/clk/qcom/clk-cpu-osm.c b/drivers/clk/qcom/clk-cpu-osm.c
+index d30ddbb01..33106f3f1 100644
+--- a/drivers/clk/qcom/clk-cpu-osm.c
++++ b/drivers/clk/qcom/clk-cpu-osm.c
+@@ -527,6 +527,50 @@ static struct clk_osm perfcl_clk = {
+ 	.hw.init = &osm_clks_init[2],
+ };
  
--	SOC_SINGLE_S8_TLV("RX0 Digital Volume", WCD934X_CDC_RX0_RX_VOL_CTL,
--		-84, 40, digital_gain), /* -84dB min - 40dB max */
--	SOC_SINGLE_S8_TLV("RX1 Digital Volume", WCD934X_CDC_RX1_RX_VOL_CTL,
--		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("RX2 Digital Volume", WCD934X_CDC_RX2_RX_VOL_CTL,
--		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("RX3 Digital Volume", WCD934X_CDC_RX3_RX_VOL_CTL,
--		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("RX4 Digital Volume", WCD934X_CDC_RX4_RX_VOL_CTL,
--		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("RX7 Digital Volume", WCD934X_CDC_RX7_RX_VOL_CTL,
--		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("RX8 Digital Volume", WCD934X_CDC_RX8_RX_VOL_CTL,
--		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("RX0 Mix Digital Volume",
--		WCD934X_CDC_RX0_RX_VOL_MIX_CTL, -84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("RX1 Mix Digital Volume",
--		WCD934X_CDC_RX1_RX_VOL_MIX_CTL, -84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("RX2 Mix Digital Volume",
--		WCD934X_CDC_RX2_RX_VOL_MIX_CTL, -84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("RX3 Mix Digital Volume",
--		WCD934X_CDC_RX3_RX_VOL_MIX_CTL, -84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("RX4 Mix Digital Volume",
--		WCD934X_CDC_RX4_RX_VOL_MIX_CTL, -84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("RX7 Mix Digital Volume",
--		WCD934X_CDC_RX7_RX_VOL_MIX_CTL, -84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("RX8 Mix Digital Volume",
--		WCD934X_CDC_RX8_RX_VOL_MIX_CTL, -84, 40, digital_gain),
--
--	SOC_SINGLE_S8_TLV("DEC0 Volume", WCD934X_CDC_TX0_TX_VOL_CTL,
-+	SOC_SINGLE_SX_TLV("RX0 Digital Volume", WCD934X_CDC_RX0_RX_VOL_CTL,
-+		0, -84, 40, digital_gain), /* -84dB min - 40dB max */
-+#ifndef CONFIG_SOUND_CONTROL
-+	SOC_SINGLE_SX_TLV("RX1 Digital Volume", WCD934X_CDC_RX1_RX_VOL_CTL,
-+		0, -84, 40, digital_gain),
-+	SOC_SINGLE_SX_TLV("RX2 Digital Volume", WCD934X_CDC_RX2_RX_VOL_CTL,
-+		0, -84, 40, digital_gain),
-+#endif
-+	SOC_SINGLE_SX_TLV("RX3 Digital Volume", WCD934X_CDC_RX3_RX_VOL_CTL,
-+		0, -84, 40, digital_gain),
-+	SOC_SINGLE_SX_TLV("RX4 Digital Volume", WCD934X_CDC_RX4_RX_VOL_CTL,
-+		0, -84, 40, digital_gain),
-+	SOC_SINGLE_SX_TLV("RX7 Digital Volume", WCD934X_CDC_RX7_RX_VOL_CTL,
-+		0, -84, 40, digital_gain),
-+	SOC_SINGLE_SX_TLV("RX8 Digital Volume", WCD934X_CDC_RX8_RX_VOL_CTL,
-+		0, -84, 40, digital_gain),
-+	SOC_SINGLE_SX_TLV("RX0 Mix Digital Volume",
-+		WCD934X_CDC_RX0_RX_VOL_MIX_CTL, 0, -84, 40, digital_gain),
-+#ifndef CONFIG_SOUND_CONTROL
-+	SOC_SINGLE_SX_TLV("RX1 Mix Digital Volume",
-+		WCD934X_CDC_RX1_RX_VOL_MIX_CTL, 0, -84, 40, digital_gain),
-+	SOC_SINGLE_SX_TLV("RX2 Mix Digital Volume",
-+		WCD934X_CDC_RX2_RX_VOL_MIX_CTL, 0, -84, 40, digital_gain),
-+#endif
-+	SOC_SINGLE_SX_TLV("RX3 Mix Digital Volume",
-+		WCD934X_CDC_RX3_RX_VOL_MIX_CTL, 0, -84, 40, digital_gain),
-+	SOC_SINGLE_SX_TLV("RX4 Mix Digital Volume",
-+		WCD934X_CDC_RX4_RX_VOL_MIX_CTL, 0, -84, 40, digital_gain),
-+	SOC_SINGLE_SX_TLV("RX7 Mix Digital Volume",
-+		WCD934X_CDC_RX7_RX_VOL_MIX_CTL, 0, -84, 40, digital_gain),
-+	SOC_SINGLE_SX_TLV("RX8 Mix Digital Volume",
-+		WCD934X_CDC_RX8_RX_VOL_MIX_CTL, 0, -84, 40, digital_gain),
++/* --- Limitless S-OC --- */
++#ifdef CONFIG_LIMITLESS
++static int thre_oc_level = -1;
++static int set_oc_level(const char *val, const struct kernel_param *kp);
 +
-+	SOC_SINGLE_SX_TLV("DEC0 Volume", WCD934X_CDC_TX0_TX_VOL_CTL, 0,
- 		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("DEC1 Volume", WCD934X_CDC_TX1_TX_VOL_CTL,
-+	SOC_SINGLE_SX_TLV("DEC1 Volume", WCD934X_CDC_TX1_TX_VOL_CTL, 0,
- 		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("DEC2 Volume", WCD934X_CDC_TX2_TX_VOL_CTL,
-+	SOC_SINGLE_SX_TLV("DEC2 Volume", WCD934X_CDC_TX2_TX_VOL_CTL, 0,
- 		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("DEC3 Volume", WCD934X_CDC_TX3_TX_VOL_CTL,
-+	SOC_SINGLE_SX_TLV("DEC3 Volume", WCD934X_CDC_TX3_TX_VOL_CTL, 0,
- 		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("DEC4 Volume", WCD934X_CDC_TX4_TX_VOL_CTL,
-+	SOC_SINGLE_SX_TLV("DEC4 Volume", WCD934X_CDC_TX4_TX_VOL_CTL, 0,
- 		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("DEC5 Volume", WCD934X_CDC_TX5_TX_VOL_CTL,
-+	SOC_SINGLE_SX_TLV("DEC5 Volume", WCD934X_CDC_TX5_TX_VOL_CTL, 0,
- 		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("DEC6 Volume", WCD934X_CDC_TX6_TX_VOL_CTL,
-+	SOC_SINGLE_SX_TLV("DEC6 Volume", WCD934X_CDC_TX6_TX_VOL_CTL, 0,
- 		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("DEC7 Volume", WCD934X_CDC_TX7_TX_VOL_CTL,
-+	SOC_SINGLE_SX_TLV("DEC7 Volume", WCD934X_CDC_TX7_TX_VOL_CTL, 0,
- 		-84, 40, digital_gain),
--	SOC_SINGLE_S8_TLV("DEC8 Volume", WCD934X_CDC_TX8_TX_VOL_CTL,
-+	SOC_SINGLE_SX_TLV("DEC8 Volume", WCD934X_CDC_TX8_TX_VOL_CTL, 0,
- 		-84, 40, digital_gain),
++static const struct kernel_param_ops oc_level_ops = {
++	.set = set_oc_level,
++	.get = param_get_int,
++};
++
++module_param_cb(thre_oc_level, &oc_level_ops, &thre_oc_level, 0644);
++
++/* Limitless S-OC Level */
++static int set_oc_level(const char *val, const struct kernel_param *kp)
++{
++	int ret, level;
++	u32 oc_lval;
++	struct clk_osm *c = &perfcl_clk;
++
++	ret = kstrtoint(val, 10, &level);
++	if (ret) return ret;
++
++	thre_oc_level = level;
++
++	if (c && c->osm_table) {
++		switch (level) {
++			case 4: oc_lval = 0x98; break;
++			case 3: oc_lval = 0x96; break;
++			case 2: oc_lval = 0x94; break;
++			case 1: oc_lval = 0x92; break;
++			case 0: oc_lval = 0x90; break;
++			case -1: oc_lval = 0x70; break;
++			case -2: oc_lval = 0x50; break;
++			case -3: oc_lval = 0x30; break;
++			default: oc_lval = 0x75; break;
++		}
++
++		c->osm_table[OSM_TABLE_SIZE - 1].lval = oc_lval;
++		pr_err("Limitless: S-OC Level 0x%x\n", oc_lval);
++	}
++	return 0;
++}
++#endif
++/* linex Project */
  
--	SOC_SINGLE_S8_TLV("IIR0 INP0 Volume",
--		WCD934X_CDC_SIDETONE_IIR0_IIR_GAIN_B1_CTL, -84, 40,
-+	SOC_SINGLE_SX_TLV("IIR0 INP0 Volume",
-+		WCD934X_CDC_SIDETONE_IIR0_IIR_GAIN_B1_CTL, 0, -84, 40,
- 		digital_gain),
--	SOC_SINGLE_S8_TLV("IIR0 INP1 Volume",
--		WCD934X_CDC_SIDETONE_IIR0_IIR_GAIN_B2_CTL, -84, 40,
-+	SOC_SINGLE_SX_TLV("IIR0 INP1 Volume",
-+		WCD934X_CDC_SIDETONE_IIR0_IIR_GAIN_B2_CTL, 0, -84, 40,
- 		digital_gain),
--	SOC_SINGLE_S8_TLV("IIR0 INP2 Volume",
--		WCD934X_CDC_SIDETONE_IIR0_IIR_GAIN_B3_CTL, -84, 40,
-+	SOC_SINGLE_SX_TLV("IIR0 INP2 Volume",
-+		WCD934X_CDC_SIDETONE_IIR0_IIR_GAIN_B3_CTL, 0, -84, 40,
- 		digital_gain),
--	SOC_SINGLE_S8_TLV("IIR0 INP3 Volume",
--		WCD934X_CDC_SIDETONE_IIR0_IIR_GAIN_B4_CTL, -84, 40,
-+	SOC_SINGLE_SX_TLV("IIR0 INP3 Volume",
-+		WCD934X_CDC_SIDETONE_IIR0_IIR_GAIN_B4_CTL, 0, -84, 40,
- 		digital_gain),
--	SOC_SINGLE_S8_TLV("IIR1 INP0 Volume",
--		WCD934X_CDC_SIDETONE_IIR1_IIR_GAIN_B1_CTL, -84, 40,
-+	SOC_SINGLE_SX_TLV("IIR1 INP0 Volume",
-+		WCD934X_CDC_SIDETONE_IIR1_IIR_GAIN_B1_CTL, 0, -84, 40,
- 		digital_gain),
--	SOC_SINGLE_S8_TLV("IIR1 INP1 Volume",
--		WCD934X_CDC_SIDETONE_IIR1_IIR_GAIN_B2_CTL, -84, 40,
-+	SOC_SINGLE_SX_TLV("IIR1 INP1 Volume",
-+		WCD934X_CDC_SIDETONE_IIR1_IIR_GAIN_B2_CTL, 0, -84, 40,
- 		digital_gain),
--	SOC_SINGLE_S8_TLV("IIR1 INP2 Volume",
--		WCD934X_CDC_SIDETONE_IIR1_IIR_GAIN_B3_CTL, -84, 40,
-+	SOC_SINGLE_SX_TLV("IIR1 INP2 Volume",
-+		WCD934X_CDC_SIDETONE_IIR1_IIR_GAIN_B3_CTL, 0, -84, 40,
- 		digital_gain),
--	SOC_SINGLE_S8_TLV("IIR1 INP3 Volume",
--		WCD934X_CDC_SIDETONE_IIR1_IIR_GAIN_B4_CTL, -84, 40,
-+	SOC_SINGLE_SX_TLV("IIR1 INP3 Volume",
-+		WCD934X_CDC_SIDETONE_IIR1_IIR_GAIN_B4_CTL, 0, -84, 40,
- 		digital_gain),
+ static struct clk_osm cpu4_perfcl_clk = {
+ 	.core_num = 0,
+diff --git a/drivers/clk/qcom/gpucc-sdm845.c b/drivers/clk/qcom/gpucc-sdm845.c
+index be102bad0..586207ffe 100644
+--- a/drivers/clk/qcom/gpucc-sdm845.c
++++ b/drivers/clk/qcom/gpucc-sdm845.c
+@@ -274,16 +274,15 @@ static const struct freq_tbl ftbl_gpu_cc_gx_gfx3d_clk_src[] = {
+ 	{ }
+ };
  
- 	SOC_SINGLE_EXT("ANC Slot", SND_SOC_NOPM, 0, 100, 0, tavil_get_anc_slot,
-@@ -9081,7 +9100,7 @@ static int tavil_dig_core_power_collapse(struct tavil_priv *tavil,
+-static const struct freq_tbl  ftbl_gpu_cc_gx_gfx3d_clk_src_sdm845_v2[] = {
+-	F(180000000, P_CRC_DIV,  1, 0, 0),
+-	F(257000000, P_CRC_DIV,  1, 0, 0),
+-	F(342000000, P_CRC_DIV,  1, 0, 0),
+-	F(414000000, P_CRC_DIV,  1, 0, 0),
+-	F(520000000, P_CRC_DIV,  1, 0, 0),
+-	F(596000000, P_CRC_DIV,  1, 0, 0),
+-	F(675000000, P_CRC_DIV,  1, 0, 0),
+-	F(710000000, P_CRC_DIV,  1, 0, 0),
+-	F(810000000, P_CRC_DIV,  1, 0, 0),
++static const struct freq_tbl ftbl_gpu_cc_gx_gfx3d_clk_src_sdm845_v2[] = {
++	F(180000000, P_CRC_DIV, 1, 0, 0),
++	F(257000000, P_CRC_DIV, 1, 0, 0),
++	F(342000000, P_CRC_DIV, 1, 0, 0),
++	F(414000000, P_CRC_DIV, 1, 0, 0),
++	F(520000000, P_CRC_DIV, 1, 0, 0),
++	F(675000000, P_CRC_DIV, 1, 0, 0),
++	F(710000000, P_CRC_DIV, 1, 0, 0),
++	F(780000000, P_CRC_DIV, 1, 0, 0),
+ 	{ }
+ };
  
- 	if (req_state == POWER_COLLAPSE) {
- 		if (tavil->power_active_ref == 0) {
--			schedule_delayed_work(&tavil->power_gate_work,
-+			queue_delayed_work(system_power_efficient_wq, &tavil->power_gate_work,
- 			msecs_to_jiffies(dig_core_collapse_timer * 1000));
- 		}
- 	} else if (req_state == POWER_RESUME) {
-@@ -10155,6 +10174,114 @@ static int tavil_post_reset_cb(struct wcd9xxx *wcd9xxx)
- 	return ret;
+@@ -639,12 +638,10 @@ static void gpu_cc_gfx_sdm845_fixup_sdm845v2(void)
+ 	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_NOMINAL] =
+ 		520000000;
+ 	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_NOMINAL_L1] =
+-		596000000;
+-	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_HIGH] = 675000000;
+-	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_HIGH_1] =
+ 		710000000;
++	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_HIGH] = 675000000;
+ 	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_HIGH_L1] =
+-		810000000;
++		780000000;
  }
  
-+#ifdef CONFIG_SOUND_CONTROL
-+static ssize_t headphone_gain_show(struct kobject *kobj,
-+		struct kobj_attribute *attr, char *buf)
-+{
-+	return snprintf(buf, PAGE_SIZE, "%d %d\n",
-+		snd_soc_read(sound_control_codec_ptr, WCD934X_CDC_RX1_RX_VOL_CTL),
-+		snd_soc_read(sound_control_codec_ptr, WCD934X_CDC_RX2_RX_VOL_CTL)
-+	);
-+}
-+
-+static ssize_t headphone_gain_store(struct kobject *kobj,
-+		struct kobj_attribute *attr, const char *buf, size_t count)
-+{
-+
-+	int input_l, input_r;
-+
-+	sscanf(buf, "%d %d", &input_l, &input_r);
-+
-+	if (input_l < -84 || input_l > 20)
-+		input_l = 0;
-+
-+	if (input_r < -84 || input_r > 20)
-+		input_r = 0;
-+
-+	custom_hp_left = input_l;
-+	custom_hp_right = input_r;
-+
-+	snd_soc_write(sound_control_codec_ptr, WCD934X_CDC_RX1_RX_VOL_MIX_CTL, input_l);
-+	snd_soc_write(sound_control_codec_ptr, WCD934X_CDC_RX2_RX_VOL_MIX_CTL, input_r);
-+	snd_soc_write(sound_control_codec_ptr, WCD934X_CDC_RX1_RX_VOL_CTL, input_l);
-+	snd_soc_write(sound_control_codec_ptr, WCD934X_CDC_RX2_RX_VOL_CTL, input_r);
-+
-+	return count;
-+}
-+
-+static struct kobj_attribute headphone_gain_attribute =
-+	__ATTR(headphone_gain, 0664,
-+		headphone_gain_show,
-+		headphone_gain_store);
-+
-+static ssize_t mic_gain_show(struct kobject *kobj,
-+		struct kobj_attribute *attr, char *buf)
-+{
-+	return snprintf(buf, PAGE_SIZE, "%d\n",
-+		snd_soc_read(sound_control_codec_ptr, WCD934X_CDC_TX7_TX_VOL_CTL));
-+}
-+
-+static ssize_t mic_gain_store(struct kobject *kobj,
-+		struct kobj_attribute *attr, const char *buf, size_t count)
-+{
-+	int input;
-+
-+	sscanf(buf, "%d", &input);
-+
-+	if (input < -10 || input > 20)
-+		input = 0;
-+
-+	snd_soc_write(sound_control_codec_ptr, WCD934X_CDC_TX7_TX_VOL_CTL, input);
-+
-+	return count;
-+}
-+
-+static struct kobj_attribute mic_gain_attribute =
-+	__ATTR(mic_gain, 0664,
-+		mic_gain_show,
-+		mic_gain_store);
-+
-+static ssize_t earpiece_gain_show(struct kobject *kobj,
-+		struct kobj_attribute *attr, char *buf)
-+{
-+	return snprintf(buf, PAGE_SIZE, "%d\n",
-+		snd_soc_read(sound_control_codec_ptr, WCD934X_CDC_RX0_RX_VOL_CTL));
-+}
-+
-+static ssize_t earpiece_gain_store(struct kobject *kobj,
-+		struct kobj_attribute *attr, const char *buf, size_t count)
-+{
-+	int input;
-+
-+	sscanf(buf, "%d", &input);
-+
-+	if (input < -10 || input > 20)
-+		input = 0;
-+
-+	snd_soc_write(sound_control_codec_ptr, WCD934X_CDC_RX0_RX_VOL_CTL, input);
-+
-+	return count;
-+}
-+
-+static struct kobj_attribute earpiece_gain_attribute =
-+	__ATTR(earpiece_gain, 0664,
-+		earpiece_gain_show,
-+		earpiece_gain_store);
-+
-+static struct attribute *sound_control_attrs[] = {
-+		&headphone_gain_attribute.attr,
-+		&mic_gain_attribute.attr,
-+		&earpiece_gain_attribute.attr,
-+		NULL,
-+};
-+
-+static struct attribute_group sound_control_attr_group = {
-+		.attrs = sound_control_attrs,
-+};
-+
-+static struct kobject *sound_control_kobj;
+ static void gpu_cc_gfx_sdm845_fixup_sdm670(void)
+diff --git a/drivers/power/supply/qcom/qpnp-smb2.c b/drivers/power/supply/qcom/qpnp-smb2.c
+index 73c3bb799..061497509 100644
+--- a/drivers/power/supply/qcom/qpnp-smb2.c
++++ b/drivers/power/supply/qcom/qpnp-smb2.c
+@@ -2043,6 +2043,10 @@ static int smb2_init_hw(struct smb2 *chip)
+ 	/* vote 0mA on usb_icl for non battery platforms */
+ 	vote(chg->usb_icl_votable,
+ 		DEFAULT_VOTER, chip->dt.no_battery, 0);
++#ifdef CONFIG_LIMITLESS
++	vote(chg->usb_icl_votable,
++		"LIMITLESS_VOTER", true, 2800000);
++#endif
+ 	vote(chg->dc_suspend_votable,
+ 		DEFAULT_VOTER, chip->dt.no_battery, 0);
+ 	vote(chg->fcc_votable,
+diff --git a/drivers/power/supply/qcom/smb5-lib.c b/drivers/power/supply/qcom/smb5-lib.c
+index 262c5eedf..6936b3b4c 100644
+--- a/drivers/power/supply/qcom/smb5-lib.c
++++ b/drivers/power/supply/qcom/smb5-lib.c
+@@ -29,6 +29,11 @@
+ #include "storm-watch.h"
+ #include "schgm-flash.h"
+ 
++#ifdef CONFIG_LIMITLESS
++  #define USBIN_2500MA    2500000
++  #define USBIN_3000MA    3000000
 +#endif
 +
- static int tavil_soc_codec_probe(struct snd_soc_codec *codec)
+ #define smblib_err(chg, fmt, ...)		\
+ 	pr_err("%s: %s: " fmt, chg->name,	\
+ 		__func__, ##__VA_ARGS__)	\
+diff --git a/fs/proc/version.c b/fs/proc/version.c
+index d2154eb6d..abe628ec1 100644
+--- a/fs/proc/version.c
++++ b/fs/proc/version.c
+@@ -5,12 +5,29 @@
+ #include <linux/seq_file.h>
+ #include <linux/utsname.h>
+ 
++/* Limitless Identity */
++#ifdef CONFIG_LIMITLESS
++extern char thre_user_name[];
++extern char thre_host_name[];
++extern char thre_compiler[];
++#endif
++
+ static int version_proc_show(struct seq_file *m, void *v)
  {
- 	struct wcd9xxx *control;
-@@ -10164,6 +10291,10 @@ static int tavil_soc_codec_probe(struct snd_soc_codec *codec)
- 	int i, ret;
- 	void *ptr = NULL;
++#ifdef CONFIG_LIMITLESS
++	seq_printf(m, linux_proc_banner,
++		utsname()->sysname,
++		utsname()->release,
++		thre_user_name,
++		thre_host_name,
++		thre_compiler,
++		utsname()->version);
++#else
+ 	seq_printf(m, linux_proc_banner,
+ 		utsname()->sysname,
+ 		utsname()->release,
+ 		utsname()->version);
++#endif
+ 	return 0;
+ }
  
-+#ifdef CONFIG_SOUND_CONTROL
-+	sound_control_codec_ptr = codec;
+diff --git a/fs/sdcardfs/sdcardfs.h b/fs/sdcardfs/sdcardfs.h
+index b991219cb..03856b77c 100644
+--- a/fs/sdcardfs/sdcardfs.h
++++ b/fs/sdcardfs/sdcardfs.h
+@@ -73,6 +73,9 @@
+ 
+ #define AID_PACKAGE_INFO  1027
+ 
++#ifdef CONFIG_LIMITLESS
++  #define SDCARDFS_VERSION "Limitless 2.4"
++#endif
+ 
+ /*
+  * Permissions are handled by our permission function.
+diff --git a/init/Kconfig b/init/Kconfig
+index 8967a5f33..1ebe0894b 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -2015,4 +2015,11 @@ config ASN1
+ 	  inform it as to what tags are to be expected in a stream and what
+ 	  functions to call on what tags.
+ 
++config LIMITLESS
++	bool "Enable Limitless Addon"
++	default n
++	help
++	  This option enables ThRE Team's Limitless Addon
++	  for dynamic kernel parameters.
++
+ source "kernel/Kconfig.locks"
+diff --git a/init/version.c b/init/version.c
+index 5606341e9..7f7531d6e 100644
+--- a/init/version.c
++++ b/init/version.c
+@@ -45,7 +45,122 @@ const char linux_banner[] =
+ 	"Linux version " UTS_RELEASE " (" LINUX_COMPILE_BY "@"
+ 	LINUX_COMPILE_HOST ") (" LINUX_COMPILER ") " UTS_VERSION "\n";
+ 
++#ifdef CONFIG_LIMITLESS
++const char linux_proc_banner[] =
++	"%s version %s (%s@%s) (%s) %s\n";
++#else
++
+ const char linux_proc_banner[] =
+ 	"%s version %s"
+ 	" (" LINUX_COMPILE_BY "@" LINUX_COMPILE_HOST ")"
+ 	" (" LINUX_COMPILER ") %s\n";
 +#endif
 +
- 	control = dev_get_drvdata(codec->dev->parent);
- 
- 	dev_info(codec->dev, "%s()\n", __func__);
-@@ -11073,6 +11204,18 @@ static int tavil_probe(struct platform_device *pdev)
- 	}
- 	schedule_work(&tavil->tavil_add_child_devices_work);
- 
-+#ifdef CONFIG_SOUND_CONTROL
-+	sound_control_kobj = kobject_create_and_add("sound_control", kernel_kobj);
-+	if (sound_control_kobj == NULL) {
-+		pr_warn("%s kobject create failed!\n", __func__);
-+        }
++/* Limitless Identity */
++#ifdef CONFIG_LIMITLESS
++ char thre_kernel_name[64] = UTS_RELEASE;
++ char thre_user_name[64]   = LINUX_COMPILE_BY;
++ char thre_host_name[64]   = LINUX_COMPILE_HOST;
++ char thre_compiler[128]   = LINUX_COMPILER;
++ char thre_build_date[128] = UTS_VERSION;
 +
-+	ret = sysfs_create_group(sound_control_kobj, &sound_control_attr_group);
-+        if (ret) {
-+		pr_warn("%s sysfs file create failed!\n", __func__);
-+	}
++static char default_kernel_name[64] = UTS_RELEASE;
++static char default_user_name[64]   = LINUX_COMPILE_BY;
++static char default_host_name[64]   = LINUX_COMPILE_HOST;
++static char default_compiler[128]   = LINUX_COMPILER;
++static char default_build_date[128] = UTS_VERSION;
++
++module_param_string(default_kernel_name, default_kernel_name, sizeof(default_kernel_name), 0444);
++module_param_string(default_user_name,   default_user_name,   sizeof(default_user_name),   0444);
++module_param_string(default_host_name,   default_host_name,   sizeof(default_host_name),   0444);
++module_param_string(default_compiler,    default_compiler,    sizeof(default_compiler),    0444);
++module_param_string(default_build_date,  default_build_date,  sizeof(default_build_date),  0444);
++
++EXPORT_SYMBOL_GPL(thre_kernel_name);
++EXPORT_SYMBOL_GPL(thre_user_name);
++EXPORT_SYMBOL_GPL(thre_host_name);
++EXPORT_SYMBOL_GPL(thre_compiler);
++EXPORT_SYMBOL_GPL(thre_build_date);
++
++static int set_kernel_name(const char *val, const struct kernel_param *kp)
++{
++    char tmp[64];
++    size_t len;
++    snprintf(tmp, sizeof(tmp), "%s", val);
++    len = strlen(tmp);
++    if (len > 0 && tmp[len - 1] == '\n')
++        tmp[len - 1] = '\0';
++    snprintf(thre_kernel_name, sizeof(thre_kernel_name), "%s", tmp);
++    snprintf(init_uts_ns.name.release, sizeof(init_uts_ns.name.release), "%s", tmp);
++    return 0;
++}
++static int set_user_name(const char *val, const struct kernel_param *kp)
++{
++    char tmp[64];
++    size_t len;
++    snprintf(tmp, sizeof(tmp), "%s", val);
++    len = strlen(tmp);
++    if (len > 0 && tmp[len - 1] == '\n')
++        tmp[len - 1] = '\0';
++
++    snprintf(thre_user_name, sizeof(thre_user_name), "%s", tmp);
++    /* init_uts_ns.name.sysname JANGAN DITIMPA agar tetap "Linux" */
++    return 0;
++}
++static int set_host_name(const char *val, const struct kernel_param *kp)
++{
++    char tmp[64];
++    size_t len;
++    snprintf(tmp, sizeof(tmp), "%s", val);
++    len = strlen(tmp);
++    if (len > 0 && tmp[len - 1] == '\n')
++        tmp[len - 1] = '\0';
++
++    snprintf(thre_host_name, sizeof(thre_host_name), "%s", tmp);
++    /* Biarkan nodename asli jika ingin aman, atau timpa jika ingin 'uname -n' berubah */
++    return 0;
++}
++static int set_compiler_name(const char *val, const struct kernel_param *kp)
++{
++    char tmp[128];
++    size_t len;
++    snprintf(tmp, sizeof(tmp), "%s", val);
++    len = strlen(tmp);
++    if (len > 0 && tmp[len - 1] == '\n')
++        tmp[len - 1] = '\0';
++
++    snprintf(thre_compiler, sizeof(thre_compiler), "%s", tmp);
++    return 0;
++}
++static int set_build_date(const char *val, const struct kernel_param *kp)
++{
++    char tmp[128];
++    size_t len;
++    snprintf(tmp, sizeof(tmp), "%s", val);
++    len = strlen(tmp);
++    if (len > 0 && tmp[len - 1] == '\n')
++        tmp[len - 1] = '\0';
++
++    snprintf(thre_build_date, sizeof(thre_build_date), "%s", tmp);
++    snprintf(init_uts_ns.name.version, sizeof(init_uts_ns.name.version), "%s", tmp);
++    return 0;
++}
++
++static int param_get_thre_string(char *buffer, const struct kernel_param *kp)
++{
++    return scnprintf(buffer, PAGE_SIZE, "%s", (char *)kp->arg);
++}
++
++static const struct kernel_param_ops kernel_name_ops = { .set = set_kernel_name, .get = param_get_thre_string };
++static const struct kernel_param_ops user_ops = { .set = set_user_name, .get = param_get_thre_string };
++static const struct kernel_param_ops host_ops = { .set = set_host_name, .get = param_get_thre_string };
++static const struct kernel_param_ops comp_ops = { .set = set_compiler_name, .get = param_get_thre_string };
++static const struct kernel_param_ops date_ops = { .set = set_build_date, .get = param_get_thre_string };
++
++module_param_cb(thre_kernel_name, &kernel_name_ops, thre_kernel_name, 0644);
++module_param_cb(thre_user_name,   &user_ops,        thre_user_name,   0644);
++module_param_cb(thre_host_name,   &host_ops,        thre_host_name,   0644);
++module_param_cb(thre_compiler,    &comp_ops,        thre_compiler,    0644);
++module_param_cb(thre_build_date,  &date_ops,        thre_build_date,  0644);
 +#endif
-+
- 	return ret;
- 
- err_cdc_reg:
++/* linex Project */
