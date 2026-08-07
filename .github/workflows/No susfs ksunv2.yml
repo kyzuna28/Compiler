@@ -479,15 +479,24 @@ jobs:
           set -o pipefail
           
           # PERBAIKAN 6: Matikan LLVM_IAS=1 dan gunakan CROSS_COMPILE dari GCC 4.9
-          make -j$MAKE_JOBS ARCH=arm64 O=../out \
+          make -j$MAKE_JOBS \
+            ARCH=arm64 \
+            O=../out \
             LLVM=1 \
-            CC=clang HOSTCC=clang HOSTCXX=clang++ \
-            LD=ld.lld HOSTLD=ld.lld \
-            AR=llvm-ar HOSTAR=llvm-ar NM=llvm-nm \
-            OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip READELF=llvm-readelf \
-            CROSS_COMPILE=$HOME/gcc-64/bin/aarch64-linux-android- \
-            CROSS_COMPILE_ARM32=$HOME/gcc-32/bin/arm-linux-androideabi- \
+            LLVM_IAS=0 \
+            CC=clang \
+            HOSTCC=clang \
+            HOSTCXX=clang++ \
+            LD=ld.lld \
+            HOSTLD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            READELF=llvm-readelf \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
             KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments $EXTRA_CFLAGS" \
