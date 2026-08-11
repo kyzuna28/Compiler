@@ -18,12 +18,14 @@ on:
         type: string
 
       kernel_name:
-        description: 'Kernel Name'
+        description: 'Kernel Name (none = tidak mengubah nama kernel)'
+        default: 'none'
         required: true
         type: string
 
       rom_type:
-        description: 'ROM Type (cth: AOSP / MIUI)'
+        description: 'ROM Type (cth: AOSP / MIUI / none)'
+        default: 'none'
         required: true
         type: string
 
@@ -45,6 +47,18 @@ on:
           - neutron-clang
           - aosp-clang
           - debian-clang
+
+      custom_compiler_name_enable:
+        description: 'Enable Custom Compiler Name'
+        default: false
+        required: true
+        type: boolean
+
+      custom_compiler_name:
+        description: 'Custom Compiler Name (dipakai jika enabled)'
+        default: 'Custom Clang'
+        required: false
+        type: string
 
       lto_mode:
         description: 'LTO Optimization'
@@ -79,16 +93,16 @@ on:
         required: true
         type: choice
         options:
-          - "none"
-          - "apatch"
-          - "sorayukii"
-          - "mr-morat"
-          - "enjoy"
-          - "legacy"
-          - "sukisu"
-          - "next"
-          - "resukisu"
-          - "thre"
+          - 'none'
+          - 'apatch'
+          - 'sorayukii'
+          - 'mr-morat'
+          - 'enjoy'
+          - 'legacy'
+          - 'sukisu'
+          - 'next'
+          - 'resukisu'
+          - 'thre'
 
       susfs_custom:
         description: '4. SuSFS Script .sh/.patch (Post-SuSFS). Kosong = none'
@@ -146,8 +160,8 @@ jobs:
 
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      REPO_RAW: "https://raw.githubusercontent.com/kyzuna28/Compiler/main"
-      REPO_API: "https://api.github.com/repos/kyzuna28/Compiler/git/trees/main?recursive=1"
+      REPO_RAW: 'https://raw.githubusercontent.com/kyzuna28/Compiler/main'
+      REPO_API: 'https://api.github.com/repos/kyzuna28/Compiler/git/trees/main?recursive=1'
 
     steps:
 
@@ -198,12 +212,13 @@ jobs:
             software-properties-common \
             gnupg
 
-          if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
+          if [[ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]]; then
             sudo ln -sf \
               /lib/x86_64-linux-gnu/libtinfo.so.6 \
               /lib/x86_64-linux-gnu/libtinfo.so.5
           else
-            sudo apt-get install --no-install-recommends -y libtinfo5 || true
+            sudo apt-get install --no-install-recommends -y \
+              libtinfo5 || true
           fi
 
       # ============================================================
@@ -259,15 +274,15 @@ jobs:
 
             weebx-clang)
               curl -sL \
-                "https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz" \
-                | tar -xz -C tc
+                'https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz' |
+                tar -xz -C tc
               ;;
 
             neutron-clang)
               cd tc
 
               curl -sLO \
-                "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+                'https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman'
 
               chmod +x antman
 
@@ -283,7 +298,9 @@ jobs:
               ;;
 
             debian-clang)
-              wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s 21
+              wget -qO- \
+                https://apt.llvm.org/llvm.sh |
+                sudo bash -s 21
 
               sudo apt-get install \
                 --no-install-recommends \
@@ -321,10 +338,17 @@ jobs:
               chmod +x tc/bin/*
 
               for tool in ar nm objcopy objdump readelf strip; do
-                if [ -x "/usr/bin/llvm-$tool-21" ]; then
-                  ln -sf "/usr/bin/llvm-$tool-21" "tc/bin/llvm-$tool"
+                if [[ -x "/usr/bin/llvm-$tool-21" ]]; then
+                  ln -sf \
+                    "/usr/bin/llvm-$tool-21" \
+                    "tc/bin/llvm-$tool"
                 fi
               done
+              ;;
+
+            *)
+              echo "❌ Unknown compiler: ${{ inputs.compiler }}"
+              exit 1
               ;;
 
           esac
@@ -386,7 +410,7 @@ jobs:
             BASE_CONF="${CONF_FILES[0]}"
             BASE_PATH="$BASE_DIR/vendor/xiaomi/$BASE_CONF"
 
-            if [ ! -f "$BASE_PATH" ]; then
+            if [[ ! -f "$BASE_PATH" ]]; then
               echo "❌ Base config tidak ditemukan:"
               echo "   $BASE_PATH"
               exit 1
@@ -394,7 +418,9 @@ jobs:
 
             MERGED_CONFIG="$BASE_DIR/kyzuna_merged_defconfig"
 
-            cp "$BASE_PATH" "$MERGED_CONFIG"
+            cp \
+              "$BASE_PATH" \
+              "$MERGED_CONFIG"
 
             echo "📦 Base Config: $BASE_CONF"
 
@@ -403,7 +429,7 @@ jobs:
               FRAG="${CONF_FILES[$i]}"
               FRAG_PATH="$BASE_DIR/vendor/xiaomi/$FRAG"
 
-              if [ -f "$FRAG_PATH" ]; then
+              if [[ -f "$FRAG_PATH" ]]; then
                 echo "🔗 Merge Fragment: $FRAG"
                 cat "$FRAG_PATH" >> "$MERGED_CONFIG"
               else
@@ -423,11 +449,13 @@ jobs:
               CLEAN_CONF="${CLEAN_CONF%.config}"
             fi
 
-            if [ -f "$BASE_DIR/$CLEAN_CONF" ]; then
+            if [[ -f "$BASE_DIR/$CLEAN_CONF" ]]; then
+
               MAKE_DEFCONFIG="$CLEAN_CONF"
               TARGET_CONFIG="$BASE_DIR/$CLEAN_CONF"
 
-            elif [ -f "$BASE_DIR/vendor/xiaomi/$CLEAN_CONF" ]; then
+            elif [[ -f "$BASE_DIR/vendor/xiaomi/$CLEAN_CONF" ]]; then
+
               MAKE_DEFCONFIG="kyzuna_single_defconfig"
               TARGET_CONFIG="$BASE_DIR/$MAKE_DEFCONFIG"
 
@@ -436,9 +464,11 @@ jobs:
                 "$TARGET_CONFIG"
 
             else
+
               echo "❌ Config tidak ditemukan:"
               echo "   $CLEAN_CONF"
               exit 1
+
             fi
 
           fi
@@ -450,24 +480,81 @@ jobs:
           echo "✅ MAKE_DEFCONFIG = $MAKE_DEFCONFIG"
           echo "✅ TARGET_CONFIG   = $TARGET_CONFIG"
 
-          # Remove default EXTRAVERSION
-          sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/g' Makefile
+          # ========================================================
+          # VERSION / LOCALVERSION
+          # ========================================================
 
-          # Remove CONFIG_LOCALVERSION
-          if [ -f "$TARGET_CONFIG" ]; then
-            sed -i \
-              's/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' \
-              "$TARGET_CONFIG"
+          sed -i \
+            's/^EXTRAVERSION.*/EXTRAVERSION =/g' \
+            Makefile
+
+          CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | xargs)
+          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | xargs)
+
+          if [[ -z "$CLEAN_KERNEL" ]]; then
+            CLEAN_KERNEL="none"
           fi
 
-          # Compiler information
-          COMPILER_NAME="${{ inputs.compiler }}"
+          if [[ -z "$CLEAN_ROM" ]]; then
+            CLEAN_ROM="none"
+          fi
 
-          COMPILER_NAME=$(
-            echo "$COMPILER_NAME" |
-            awk -F'-' \
-            '{print toupper(substr($1,1,1)) substr($1,2) " Clang"}'
-          )
+          echo ""
+          echo "=========================================="
+          echo "VERSION CONFIGURATION"
+          echo "=========================================="
+          echo "Kernel Name : $CLEAN_KERNEL"
+          echo "ROM Type    : $CLEAN_ROM"
+          echo "=========================================="
+
+          if [[ "$CLEAN_KERNEL" == "none" ]] &&
+             [[ "$CLEAN_ROM" == "none" ]]; then
+
+            echo "⏭️ Kernel/ROM naming disabled."
+            echo "⏭️ Existing CONFIG_LOCALVERSION will be preserved."
+
+          else
+
+            if [[ -f "$TARGET_CONFIG" ]]; then
+              sed -i \
+                's/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' \
+                "$TARGET_CONFIG"
+            fi
+
+            echo "📝 Custom kernel/ROM LOCALVERSION enabled."
+
+          fi
+
+          # ========================================================
+          # COMPILER INFORMATION
+          # ========================================================
+
+          COMPILER_CUSTOM_ENABLE="${{ inputs.custom_compiler_name_enable }}"
+          COMPILER_CUSTOM_NAME="${{ inputs.custom_compiler_name }}"
+
+          if [[ "$COMPILER_CUSTOM_ENABLE" == "true" ]] &&
+             [[ -n "$COMPILER_CUSTOM_NAME" ]] &&
+             [[ "$COMPILER_CUSTOM_NAME" != "none" ]]; then
+
+            COMPILER_NAME="$COMPILER_CUSTOM_NAME"
+
+            echo "🧬 Custom compiler name: ENABLED"
+            echo "📝 Compiler name: $COMPILER_NAME"
+
+          else
+
+            COMPILER_NAME="${{ inputs.compiler }}"
+
+            COMPILER_NAME=$(
+              echo "$COMPILER_NAME" |
+              awk -F'-' \
+              '{print toupper(substr($1,1,1)) substr($1,2) " Clang"}'
+            )
+
+            echo "🧬 Custom compiler name: DISABLED"
+            echo "📝 Compiler name: $COMPILER_NAME"
+
+          fi
 
           RAW_CLANG_VER=$(
             clang --version 2>/dev/null |
@@ -540,11 +627,14 @@ jobs:
               -O "$file"
 
             if [[ "$file" == *.patch ]]; then
+
               patch -p1 < "$file" || exit 1
 
             elif [[ "$file" == *.sh ]]; then
+
               chmod +x "$file"
               bash "$file" || exit 1
+
             fi
 
           done
@@ -620,7 +710,7 @@ jobs:
 
               sorayukii)
                 curl -LSs \
-                  "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" |
+                  'https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh' |
                   bash -s hookless || exit 1
 
                 enable_cfg \
@@ -632,7 +722,7 @@ jobs:
 
               mr-morat)
                 curl -LSs \
-                  "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" |
+                  'https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh' |
                   bash -s syscall || exit 1
 
                 enable_cfg \
@@ -644,7 +734,7 @@ jobs:
 
               enjoy)
                 curl -LSs \
-                  "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" |
+                  'https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh' |
                   bash -s enjoy || exit 1
 
                 enable_cfg KSU_MANUAL_HOOK
@@ -656,7 +746,7 @@ jobs:
 
               legacy)
                 curl -LSs \
-                  "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" |
+                  'https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh' |
                   bash -s legacy || exit 1
 
                 enable_cfg KSU_MANUAL_HOOK
@@ -668,7 +758,7 @@ jobs:
 
               sukisu)
                 curl -LSs \
-                  "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" |
+                  'https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh' |
                   bash -s resukisu || exit 1
 
                 if [[ "$SUSFS_ENABLE" != "true" ]]; then
@@ -678,7 +768,7 @@ jobs:
 
               next)
                 curl -LSs \
-                  "https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh" |
+                  'https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh' |
                   bash -s legacy-susfs-v2 || exit 1
 
                 enable_cfg KSU_MANUAL_HOOK
@@ -686,7 +776,7 @@ jobs:
 
               resukisu)
                 curl -LSs \
-                  "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" |
+                  'https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh' |
                   bash -s main || exit 1
 
                 if [[ "$SUSFS_ENABLE" != "true" ]]; then
@@ -696,7 +786,7 @@ jobs:
 
               thre)
                 curl -LSs \
-                  "https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh" |
+                  'https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh' |
                   bash -s main || exit 1
 
                 disable_cfg \
@@ -704,6 +794,11 @@ jobs:
                   HAVE_KPROBES
 
                 enable_cfg KSU_MANUAL_HOOK
+                ;;
+
+              *)
+                echo "❌ Unknown KSU method: $KSU_CHOICE"
+                exit 1
                 ;;
 
             esac
@@ -758,14 +853,17 @@ jobs:
               -O "$file"
 
             if [[ "$file" == *.patch ]]; then
+
               patch -p1 < "$file" || {
                 echo "⚠️ Patch menghasilkan reject."
                 echo "⚠️ Build tetap dilanjutkan."
               }
 
             elif [[ "$file" == *.sh ]]; then
+
               chmod +x "$file"
               bash "$file" || exit 1
+
             fi
 
           done
@@ -784,8 +882,13 @@ jobs:
             local cfg="$1"
             local value="$2"
 
-            sed -i "/^CONFIG_${cfg}=/d" "$TARGET_CONFIG"
-            sed -i "/^# CONFIG_${cfg} is not set$/d" "$TARGET_CONFIG"
+            sed -i \
+              "/^CONFIG_${cfg}=/d" \
+              "$TARGET_CONFIG"
+
+            sed -i \
+              "/^# CONFIG_${cfg} is not set$/d" \
+              "$TARGET_CONFIG"
 
             if [[ "$value" == "y" ]]; then
               echo "CONFIG_${cfg}=y" >> "$TARGET_CONFIG"
@@ -885,11 +988,14 @@ jobs:
               -O "$file"
 
             if [[ "$file" == *.patch ]]; then
+
               patch -p1 < "$file" || exit 1
 
             elif [[ "$file" == *.sh ]]; then
+
               chmod +x "$file"
               bash "$file" || exit 1
+
             fi
 
           done
@@ -908,8 +1014,13 @@ jobs:
             local cfg="$1"
             local value="$2"
 
-            sed -i "/^CONFIG_${cfg}=/d" "$TARGET_CONFIG"
-            sed -i "/^# CONFIG_${cfg} is not set$/d" "$TARGET_CONFIG"
+            sed -i \
+              "/^CONFIG_${cfg}=/d" \
+              "$TARGET_CONFIG"
+
+            sed -i \
+              "/^# CONFIG_${cfg} is not set$/d" \
+              "$TARGET_CONFIG"
 
             if [[ "$value" == "y" ]]; then
               echo "CONFIG_${cfg}=y" >> "$TARGET_CONFIG"
@@ -961,6 +1072,11 @@ jobs:
               enable_cfg LTO_NONE
               ;;
 
+            *)
+              echo "❌ Unknown LTO mode: $LTO_MODE"
+              exit 1
+              ;;
+
           esac
 
       # ============================================================
@@ -982,8 +1098,13 @@ jobs:
             local cfg="$1"
             local value="$2"
 
-            sed -i "/^CONFIG_${cfg}=/d" "$TARGET_CONFIG"
-            sed -i "/^# CONFIG_${cfg} is not set$/d" "$TARGET_CONFIG"
+            sed -i \
+              "/^CONFIG_${cfg}=/d" \
+              "$TARGET_CONFIG"
+
+            sed -i \
+              "/^# CONFIG_${cfg} is not set$/d" \
+              "$TARGET_CONFIG"
 
             if [[ "$value" == "y" ]]; then
               echo "CONFIG_${cfg}=y" >> "$TARGET_CONFIG"
@@ -1067,7 +1188,7 @@ jobs:
 
           BASENAME_CONFIG="${{ env.MAKE_DEFCONFIG }}"
 
-          if [ ! -f "arch/arm64/configs/$BASENAME_CONFIG" ]; then
+          if [[ ! -f "arch/arm64/configs/$BASENAME_CONFIG" ]]; then
             echo "❌ Defconfig tidak ditemukan:"
             echo "   arch/arm64/configs/$BASENAME_CONFIG"
             exit 1
@@ -1106,8 +1227,26 @@ jobs:
             MAKE_JOBS=8
           fi
 
-          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
-          CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | tr -d ' ')
+          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | xargs)
+          CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | xargs)
+
+          if [[ -z "$CLEAN_ROM" ]]; then
+            CLEAN_ROM="none"
+          fi
+
+          if [[ -z "$CLEAN_KERNEL" ]]; then
+            CLEAN_KERNEL="none"
+          fi
+
+          LOCALVERSION=""
+
+          if [[ "$CLEAN_KERNEL" != "none" ]]; then
+            LOCALVERSION="$LOCALVERSION-$CLEAN_KERNEL"
+          fi
+
+          if [[ "$CLEAN_ROM" != "none" ]]; then
+            LOCALVERSION="$LOCALVERSION-$CLEAN_ROM"
+          fi
 
           echo "=========================================="
           echo "BUILD INFORMATION"
@@ -1117,6 +1256,9 @@ jobs:
           echo "Compiler  : $(clang --version | head -n 1)"
           echo "LLD       : $(ld.lld --version | head -n 1)"
           echo "LTO       : ${{ inputs.lto_mode }}"
+          echo "Kernel    : $CLEAN_KERNEL"
+          echo "ROM       : $CLEAN_ROM"
+          echo "LocalVer  : ${LOCALVERSION:-<empty>}"
           echo "=========================================="
 
           set -o pipefail
@@ -1142,7 +1284,7 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             CLANG_TRIPLE=aarch64-linux-gnu- \
-            LOCALVERSION="-${CLEAN_KERNEL}-${CLEAN_ROM}" \
+            LOCALVERSION="$LOCALVERSION" \
             KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments $EXTRA_CFLAGS" \
             HOSTCFLAGS="-w" \
             Image.gz \
@@ -1150,7 +1292,7 @@ jobs:
             dtbs \
             2>&1 |
             grep -vE \
-              "clang: warning:|ld.lld: warning:|Broken pipe|no symbols" \
+              'clang: warning:|ld.lld: warning:|Broken pipe|no symbols' \
             || {
               echo "❌ [ERROR] Kompilasi gagal!"
               exit 1
@@ -1158,13 +1300,19 @@ jobs:
 
           KERNEL_DIR="../out/arch/arm64/boot"
 
-          if [ -s "$KERNEL_DIR/Image.gz" ]; then
+          if [[ -s "$KERNEL_DIR/Image.gz" ]]; then
+
             echo "✅ Image.gz berhasil dibuat."
-          elif [ -s "$KERNEL_DIR/Image.gz-dtb" ]; then
+
+          elif [[ -s "$KERNEL_DIR/Image.gz-dtb" ]]; then
+
             echo "✅ Image.gz-dtb berhasil dibuat."
+
           else
+
             echo "❌ Image kernel tidak ditemukan."
             exit 1
+
           fi
 
       # ============================================================
@@ -1289,7 +1437,7 @@ jobs:
       - name: 📤 Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: "${{ env.FINAL_ARTIFACT_NAME }}"
+          name: '${{ env.FINAL_ARTIFACT_NAME }}'
           path: AnyKernel3/
           compression-level: 9
           if-no-files-found: error
