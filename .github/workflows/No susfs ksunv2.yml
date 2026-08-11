@@ -1,11 +1,29 @@
-# Kyzuna Project - Customized for Poco F1 (beryllium)
+# ============================================================
+# Kyzuna Universal Kernel Builder
+# Customized for Poco F1 (beryllium)
+# ============================================================
+
 name: Build Final
 
-run-name: 🚀 ${{ inputs.zip_name }} | ${{ inputs.kernel-config }} | ${{ inputs.kernel_name }} | ${{ inputs.rom_type }} | ${{ inputs.compiler }} | ${{ inputs.lto_mode }} | ${{ inputs.kernel-branch }} | ${{ inputs.kernelsu }}
+run-name: >-
+  🚀 ${{ inputs.zip_name }}
+  | ${{ inputs.kernel-config }}
+  | ${{ inputs.kernel_name }}
+  | ${{ inputs.rom_type }}
+  | ${{ inputs.compiler_mode }}
+  | ${{ inputs.compiler }}
+  | ${{ inputs.lto_mode }}
+  | ${{ inputs.kernel-branch }}
+  | ${{ inputs.kernelsu }}
 
 on:
   workflow_dispatch:
     inputs:
+
+      # ========================================================
+      # BASIC
+      # ========================================================
+
       zip_name:
         description: 'Zip Output Name'
         required: true
@@ -17,26 +35,40 @@ on:
         required: true
         type: string
 
+      project_name:
+        description: 'Project Name / Build User'
+        default: 'selea×kyy'
+        required: true
+        type: string
+
       kernel_name:
-        description: 'Kernel Name (none = tidak mengubah nama kernel)'
+        description: 'Kernel Name (none = preserve source)'
         default: 'none'
         required: true
         type: string
 
       rom_type:
-        description: 'ROM Type (cth: AOSP / MIUI / none)'
+        description: 'ROM Type (AOSP / MIUI / Lineage / none)'
         default: 'none'
         required: true
         type: string
 
-      project_name:
-        description: 'Project Name'
-        default: 'selea×kyy'
+      # ========================================================
+      # COMPILER
+      # ========================================================
+
+      compiler_mode:
+        description: 'Compiler Mode'
+        default: 'auto'
         required: true
-        type: string
+        type: choice
+        options:
+          - auto
+          - clang
+          - gcc
 
       compiler:
-        description: 'Compiler Choice'
+        description: 'Compiler Toolchain'
         default: 'aosp-clang'
         required: true
         type: choice
@@ -47,6 +79,8 @@ on:
           - neutron-clang
           - aosp-clang
           - debian-clang
+          - system-clang
+          - system-gcc
 
       custom_compiler_name_enable:
         description: 'Enable Custom Compiler Name'
@@ -55,10 +89,46 @@ on:
         type: boolean
 
       custom_compiler_name:
-        description: 'Custom Compiler Name (dipakai jika enabled)'
+        description: 'Custom Compiler Name'
         default: 'Custom Clang'
         required: false
         type: string
+
+      llvm_ias:
+        description: 'LLVM Integrated Assembler (auto recommended)'
+        default: 'auto'
+        required: true
+        type: choice
+        options:
+          - auto
+          - enabled
+          - disabled
+
+      # ========================================================
+      # KERNEL CONFIG
+      # ========================================================
+
+      kernel-config:
+        description: 'Kernel Config (defconfig / vendor config)'
+        default: 'defconfig'
+        required: true
+        type: string
+
+      merge_config:
+        description: 'Merge Config Fragments'
+        default: false
+        required: true
+        type: boolean
+
+      extra_config:
+        description: 'Extra Config (cth: DEBUG_FS,-PREEMPT)'
+        default: 'none'
+        required: false
+        type: string
+
+      # ========================================================
+      # OPTIMIZATION
+      # ========================================================
 
       lto_mode:
         description: 'LTO Optimization'
@@ -70,71 +140,71 @@ on:
           - full
           - thin
 
-      merge_config:
-        description: 'Merge Config (vendor/xiaomi) / Single Config (arch/configs)'
-        default: false
-        type: boolean
-
-      kernel-config:
-        description: 'Nama config (cth: defconfig atau mi_defconfig)'
-        default: 'defconfig'
-        required: true
-        type: string
-
-      custom_tweaks:
-        description: '1. Tweak .sh/.patch (Pre-KSU). Kosong = none'
-        default: 'none'
-        required: false
-        type: string
+      # ========================================================
+      # ROOT / KSU
+      # ========================================================
 
       kernelsu:
-        description: '2 & 3. Pilih Root Method / Fork KSU'
+        description: 'Root Method / KernelSU Fork'
         default: 'none'
         required: true
         type: choice
         options:
           - 'none'
-          - 'apatch'
-          - 'sorayukii'
-          - 'mr-morat'
-          - 'enjoy'
-          - 'legacy'
-          - 'sukisu'
-          - 'next'
-          - 'resukisu'
-          - 'thre'
-
-      susfs_custom:
-        description: '4. SuSFS Script .sh/.patch (Post-SuSFS). Kosong = none'
-        default: 'none'
-        required: false
-        type: string
+          - apatch
+          - sorayukii
+          - mr-morat
+          - enjoy
+          - legacy
+          - sukisu
+          - next
+          - resukisu
+          - thre
 
       susfs_enable:
-        description: '5 & 6. Enable SuSFS & Config'
+        description: 'Enable SuSFS'
         default: false
+        required: true
         type: boolean
 
-      custom_hooks:
-        description: '7. Hook Script/Patch khusus (.sh/.patch). Kosong = none'
+      # ========================================================
+      # CUSTOM PATCHES
+      # ========================================================
+
+      custom_tweaks:
+        description: '1. Pre-KSU .sh/.patch (comma separated)'
         default: 'none'
         required: false
         type: string
 
-      extra_config:
-        description: '8. Ekstra Config manual (cth: debug_fs, -preempt). Kosong = none'
+      susfs_custom:
+        description: '2. SuSFS .sh/.patch (comma separated)'
+        default: 'none'
         required: false
         type: string
+
+      custom_hooks:
+        description: '3. Custom Hook .sh/.patch (comma separated)'
         default: 'none'
+        required: false
+        type: string
+
+      # ========================================================
+      # VERSION
+      # ========================================================
 
       version_hash:
-        description: 'Include Version Hash'
+        description: 'Include Git Version Hash'
         default: 'no hash'
         required: true
         type: choice
         options:
           - 'no hash'
           - hash
+
+      # ========================================================
+      # SOURCE
+      # ========================================================
 
       kernel-url:
         description: 'Kernel Source URL'
@@ -154,23 +224,43 @@ on:
         required: true
         type: string
 
+
+# ==============================================================
+# JOBS
+# ==============================================================
+
 jobs:
+
   build:
+
     runs-on: ${{ inputs.ubuntu }}
 
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
       REPO_RAW: 'https://raw.githubusercontent.com/kyzuna28/Compiler/main'
+
       REPO_API: 'https://api.github.com/repos/kyzuna28/Compiler/git/trees/main?recursive=1'
+
+
+    # ==========================================================
+    # STEPS
+    # ==========================================================
 
     steps:
 
-      # ============================================================
+
+      # ========================================================
       # DEPENDENCIES
-      # ============================================================
+      # ========================================================
+
       - name: 🧹 Clean Environment & Install Dependencies
         run: |
           sudo timedatectl set-timezone Asia/Jakarta
+
+          echo "=========================================="
+          echo "CLEANING GITHUB RUNNER"
+          echo "=========================================="
 
           sudo rm -rf \
             /usr/share/dotnet \
@@ -180,51 +270,90 @@ jobs:
 
           sudo docker image prune -af || true
 
+          echo "=========================================="
+          echo "INSTALLING BUILD DEPENDENCIES"
+          echo "=========================================="
+
           sudo apt-get update
 
-          sudo apt-get install --no-install-recommends -y \
-            gcc-arm-linux-gnueabi \
+          sudo apt-get install \
+            --no-install-recommends \
+            -y \
+            build-essential \
+            gcc \
+            g++ \
             gcc-aarch64-linux-gnu \
-            lld \
-            llvm \
             g++-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi \
+            g++-arm-linux-gnueabi \
+            binutils \
+            binutils-aarch64-linux-gnu \
+            binutils-arm-linux-gnueabi \
+            clang \
+            llvm \
+            lld \
+            make \
             bc \
-            aria2 \
-            zip \
-            unzip \
-            tar \
-            libssl-dev \
-            flex \
             bison \
-            git \
-            git-lfs \
+            flex \
+            cpio \
+            kmod \
             libelf-dev \
-            python3 \
-            libdata-dump-perl \
-            libtinfo-dev \
+            libssl-dev \
+            libncurses-dev \
             libncurses5-dev \
             libncurses6 \
-            zstd \
+            libtinfo-dev \
+            libdw-dev \
+            libunwind-dev \
+            dwarves \
+            pahole \
+            python3 \
+            python3-dev \
+            python3-setuptools \
+            python3-pip \
+            perl \
+            libperl-dev \
+            libdata-dump-perl \
+            rsync \
+            git \
+            git-lfs \
             curl \
             wget \
+            aria2 \
             patch \
-            lsb-release \
+            tar \
+            gzip \
+            bzip2 \
+            xz-utils \
+            zstd \
+            lz4 \
+            zip \
+            unzip \
+            device-tree-compiler \
+            u-boot-tools \
+            openssl \
+            pkg-config \
             software-properties-common \
-            gnupg
+            gnupg \
+            lsb-release
 
           if [[ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]]; then
             sudo ln -sf \
               /lib/x86_64-linux-gnu/libtinfo.so.6 \
               /lib/x86_64-linux-gnu/libtinfo.so.5
-          else
-            sudo apt-get install --no-install-recommends -y \
-              libtinfo5 || true
           fi
 
-      # ============================================================
+          echo "=========================================="
+          echo "DEPENDENCIES READY"
+          echo "=========================================="
+
+
+      # ========================================================
       # SWAP
-      # ============================================================
-      - name: 💽 Setup Dynamic Swap Space
+      # ========================================================
+
+      - name: 💽 Setup Dynamic Swap
         run: |
           sudo swapoff -a || true
           sudo rm -f /mnt/swapfile || true
@@ -237,67 +366,133 @@ jobs:
 
           echo "💽 Swap Size: $SWAP_SIZE"
 
-          sudo fallocate -l "$SWAP_SIZE" /mnt/swapfile
+          sudo fallocate \
+            -l "$SWAP_SIZE" \
+            /mnt/swapfile
+
           sudo chmod 600 /mnt/swapfile
+
           sudo mkswap /mnt/swapfile
+
           sudo swapon /mnt/swapfile
 
           free -h
 
-      # ============================================================
-      # TOOLCHAIN
-      # ============================================================
-      - name: 🛠️ Download Toolchain
+
+      # ========================================================
+      # CLONE KERNEL
+      # ========================================================
+
+      - name: 📂 Clone Kernel Source
         run: |
+          echo "=========================================="
+          echo "CLONING KERNEL"
+          echo "=========================================="
+
+          git clone \
+            --depth=1 \
+            -b "${{ inputs.kernel-branch }}" \
+            "${{ inputs.kernel-url }}" \
+            kernel-dir
+
+          cd kernel-dir
+
+          git submodule update \
+            --init \
+            --recursive || true
+
+          echo ""
+          echo "Kernel source:"
+          git remote -v
+
+          echo ""
+          echo "Kernel commit:"
+          git log -1 --oneline
+
+
+      # ========================================================
+      # TOOLCHAIN
+      # ========================================================
+
+      - name: 🛠️ Download & Prepare Toolchain
+        run: |
+          set -e
+
           rm -rf "$HOME/tc"
-          mkdir -p "$HOME/tc"
+
+          mkdir -p \
+            "$HOME/tc" \
+            "$HOME/tc/bin"
 
           cd "$HOME"
 
-          case "${{ inputs.compiler }}" in
+          COMPILER="${{ inputs.compiler }}"
+
+          echo "=========================================="
+          echo "TOOLCHAIN"
+          echo "=========================================="
+          echo "Requested : $COMPILER"
+          echo "Mode      : ${{ inputs.compiler_mode }}"
+          echo "=========================================="
+
+          case "$COMPILER" in
 
             zyc-clang)
+
               git clone \
                 --depth=1 \
                 -b 21 \
                 https://gitlab.com/clangsantoni/zyc_clang.git \
                 tc
+
               ;;
 
             yuki-clang)
+
               git clone \
                 --depth=1 \
                 -b 18.0.0 \
                 https://gitlab.com/TheXPerienceProject/yuki_clang.git \
                 tc
+
               ;;
 
             weebx-clang)
-              curl -sL \
+
+              curl -fsSL \
                 'https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz' |
-                tar -xz -C tc
+                tar -xz \
+                -C tc
+
               ;;
 
             neutron-clang)
+
               cd tc
 
-              curl -sLO \
+              curl -fsSLO \
                 'https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman'
 
               chmod +x antman
 
               ./antman -S=10032024
+
               ;;
 
             aosp-clang)
+
+              rm -rf "$HOME/tc"
+
               git clone \
                 --depth=1 \
                 -b 15.0 \
                 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git \
-                tc
+                "$HOME/tc"
+
               ;;
 
             debian-clang)
+
               wget -qO- \
                 https://apt.llvm.org/llvm.sh |
                 sudo bash -s 21
@@ -309,81 +504,122 @@ jobs:
                 lld-21 \
                 llvm-21
 
-              mkdir -p tc/bin
+              mkdir -p "$HOME/tc/bin"
 
-              cat > tc/bin/clang <<'EOF'
+              cat > "$HOME/tc/bin/clang" <<'EOF'
           #!/bin/bash
+
           if [[ "$1" == "--version" || "$1" == "-v" ]]; then
             echo "Debian clang version 21.1.8"
             echo "Target: aarch64-unknown-linux-gnu"
             exit 0
           fi
+
           exec /usr/bin/clang-21 "$@"
           EOF
 
-              cat > tc/bin/clang++ <<'EOF'
+              cat > "$HOME/tc/bin/clang++" <<'EOF'
           #!/bin/bash
           exec /usr/bin/clang++-21 "$@"
           EOF
 
-              cat > tc/bin/ld.lld <<'EOF'
+              cat > "$HOME/tc/bin/ld.lld" <<'EOF'
           #!/bin/bash
+
           if [[ "$1" == "--version" || "$1" == "-v" ]]; then
             echo "Debian LLD 21.1.8"
             exit 0
           fi
+
           exec /usr/bin/ld.lld-21 "$@"
           EOF
 
-              chmod +x tc/bin/*
+              chmod +x \
+                "$HOME/tc/bin/clang" \
+                "$HOME/tc/bin/clang++" \
+                "$HOME/tc/bin/ld.lld"
 
-              for tool in ar nm objcopy objdump readelf strip; do
+              for tool in \
+                ar \
+                nm \
+                objcopy \
+                objdump \
+                readelf \
+                strip; do
+
                 if [[ -x "/usr/bin/llvm-$tool-21" ]]; then
                   ln -sf \
                     "/usr/bin/llvm-$tool-21" \
-                    "tc/bin/llvm-$tool"
+                    "$HOME/tc/bin/llvm-$tool"
                 fi
+
               done
+
+              ;;
+
+            system-clang)
+
+              echo "Using system LLVM/Clang."
+
+              ;;
+
+            system-gcc)
+
+              echo "Using system GNU GCC."
+
               ;;
 
             *)
-              echo "❌ Unknown compiler: ${{ inputs.compiler }}"
+
+              echo "❌ Unknown compiler: $COMPILER"
               exit 1
+
               ;;
 
           esac
 
-          echo "🔧 Toolchain:"
           export PATH="$HOME/tc/bin:$PATH"
 
+          echo ""
+          echo "=========================================="
+          echo "TOOLCHAIN VALIDATION"
+          echo "=========================================="
+
           command -v clang || true
+          command -v clang++ || true
           command -v ld.lld || true
 
-          clang --version || true
-          ld.lld --version || true
+          command -v gcc || true
+          command -v g++ || true
 
-      # ============================================================
-      # CLONE KERNEL
-      # ============================================================
-      - name: 📂 Clone Kernel Source
-        run: |
-          git clone \
-            --depth=1 \
-            "${{ inputs.kernel-url }}" \
-            -b "${{ inputs.kernel-branch }}" \
-            kernel-dir
+          command -v aarch64-linux-gnu-gcc || true
+          command -v arm-linux-gnueabi-gcc || true
 
-          cd kernel-dir
+          echo ""
+          echo "Clang:"
+          clang --version 2>/dev/null || true
 
-          git submodule update \
-            --init \
-            --recursive || true
+          echo ""
+          echo "LLD:"
+          ld.lld --version 2>/dev/null || true
 
-      # ============================================================
+          echo ""
+          echo "GCC:"
+          gcc --version 2>/dev/null | head -n 1 || true
+
+          echo ""
+          echo "AArch64 GCC:"
+          aarch64-linux-gnu-gcc --version 2>/dev/null | head -n 1 || true
+
+
+      # ========================================================
       # CONFIG PREPARATION
-      # ============================================================
-      - name: 🔀 Prepare Merge / Single Config
+      # ========================================================
+
+      - name: 🔀 Prepare Kernel Config
         run: |
+          set -e
+
           cd kernel-dir
 
           export PATH="$HOME/tc/bin:$PATH"
@@ -396,6 +632,7 @@ jobs:
           echo "=========================================="
           echo "CONFIG PREPARATION"
           echo "=========================================="
+
           echo "Input : $CONFIG_INPUT"
           echo "Merge : $IS_MERGE"
 
@@ -404,16 +641,23 @@ jobs:
             IFS=',' read -ra CONF_FILES <<< "$CONFIG_INPUT"
 
             for i in "${!CONF_FILES[@]}"; do
-              CONF_FILES[$i]=$(echo "${CONF_FILES[$i]}" | xargs)
+              CONF_FILES[$i]=$(
+                echo "${CONF_FILES[$i]}" |
+                xargs
+              )
             done
 
             BASE_CONF="${CONF_FILES[0]}"
+
             BASE_PATH="$BASE_DIR/vendor/xiaomi/$BASE_CONF"
 
             if [[ ! -f "$BASE_PATH" ]]; then
+
               echo "❌ Base config tidak ditemukan:"
-              echo "   $BASE_PATH"
+              echo "$BASE_PATH"
+
               exit 1
+
             fi
 
             MERGED_CONFIG="$BASE_DIR/kyzuna_merged_defconfig"
@@ -427,23 +671,37 @@ jobs:
             for ((i=1; i<${#CONF_FILES[@]}; i++)); do
 
               FRAG="${CONF_FILES[$i]}"
+
               FRAG_PATH="$BASE_DIR/vendor/xiaomi/$FRAG"
 
               if [[ -f "$FRAG_PATH" ]]; then
+
                 echo "🔗 Merge Fragment: $FRAG"
-                cat "$FRAG_PATH" >> "$MERGED_CONFIG"
+
+                printf '\n' >> "$MERGED_CONFIG"
+
+                cat \
+                  "$FRAG_PATH" \
+                  >> "$MERGED_CONFIG"
+
               else
+
                 echo "⚠️ Fragment tidak ditemukan: $FRAG"
+
               fi
 
             done
 
             MAKE_DEFCONFIG="kyzuna_merged_defconfig"
+
             TARGET_CONFIG="$MERGED_CONFIG"
 
           else
 
-            CLEAN_CONF=$(echo "$CONFIG_INPUT" | xargs)
+            CLEAN_CONF=$(
+              echo "$CONFIG_INPUT" |
+              xargs
+            )
 
             if [[ "$CLEAN_CONF" == *.config ]]; then
               CLEAN_CONF="${CLEAN_CONF%.config}"
@@ -452,11 +710,13 @@ jobs:
             if [[ -f "$BASE_DIR/$CLEAN_CONF" ]]; then
 
               MAKE_DEFCONFIG="$CLEAN_CONF"
+
               TARGET_CONFIG="$BASE_DIR/$CLEAN_CONF"
 
             elif [[ -f "$BASE_DIR/vendor/xiaomi/$CLEAN_CONF" ]]; then
 
               MAKE_DEFCONFIG="kyzuna_single_defconfig"
+
               TARGET_CONFIG="$BASE_DIR/$MAKE_DEFCONFIG"
 
               cp \
@@ -466,7 +726,18 @@ jobs:
             else
 
               echo "❌ Config tidak ditemukan:"
-              echo "   $CLEAN_CONF"
+              echo "$CLEAN_CONF"
+
+              echo ""
+              echo "Available configs:"
+
+              find \
+                "$BASE_DIR" \
+                -maxdepth 3 \
+                -type f \
+                | sort \
+                | head -n 100
+
               exit 1
 
             fi
@@ -474,123 +745,90 @@ jobs:
           fi
 
           echo "MAKE_DEFCONFIG=$MAKE_DEFCONFIG" >> "$GITHUB_ENV"
+
           echo "TARGET_CONFIG=$TARGET_CONFIG" >> "$GITHUB_ENV"
 
           echo ""
           echo "✅ MAKE_DEFCONFIG = $MAKE_DEFCONFIG"
           echo "✅ TARGET_CONFIG   = $TARGET_CONFIG"
 
-          # ========================================================
-          # VERSION / LOCALVERSION
-          # ========================================================
+          # ======================================================
+          # VERSION
+          # ======================================================
 
           sed -i \
             's/^EXTRAVERSION.*/EXTRAVERSION =/g' \
             Makefile
 
-          CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | xargs)
-          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | xargs)
+          CLEAN_KERNEL=$(
+            echo "${{ inputs.kernel_name }}" |
+            xargs
+          )
 
-          if [[ -z "$CLEAN_KERNEL" ]]; then
-            CLEAN_KERNEL="none"
-          fi
+          CLEAN_ROM=$(
+            echo "${{ inputs.rom_type }}" |
+            xargs
+          )
 
-          if [[ -z "$CLEAN_ROM" ]]; then
-            CLEAN_ROM="none"
-          fi
+          [[ -z "$CLEAN_KERNEL" ]] && CLEAN_KERNEL="none"
+
+          [[ -z "$CLEAN_ROM" ]] && CLEAN_ROM="none"
 
           echo ""
           echo "=========================================="
           echo "VERSION CONFIGURATION"
           echo "=========================================="
+
           echo "Kernel Name : $CLEAN_KERNEL"
           echo "ROM Type    : $CLEAN_ROM"
-          echo "=========================================="
 
           if [[ "$CLEAN_KERNEL" == "none" ]] &&
              [[ "$CLEAN_ROM" == "none" ]]; then
 
-            echo "⏭️ Kernel/ROM naming disabled."
-            echo "⏭️ Existing CONFIG_LOCALVERSION will be preserved."
+            echo "⏭️ Naming disabled."
+            echo "⏭️ CONFIG_LOCALVERSION preserved."
+
+            echo "LOCALVERSION_MODE=preserve" >> "$GITHUB_ENV"
 
           else
 
-            if [[ -f "$TARGET_CONFIG" ]]; then
-              sed -i \
-                's/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=""/g' \
-                "$TARGET_CONFIG"
-            fi
+            echo "📝 Custom LOCALVERSION enabled."
 
-            echo "📝 Custom kernel/ROM LOCALVERSION enabled."
+            sed -i \
+              '/^CONFIG_LOCALVERSION=/d' \
+              "$TARGET_CONFIG"
 
-          fi
+            sed -i \
+              '/^# CONFIG_LOCALVERSION is not set$/d' \
+              "$TARGET_CONFIG"
 
-          # ========================================================
-          # COMPILER INFORMATION
-          # ========================================================
+            echo 'CONFIG_LOCALVERSION=""' \
+              >> "$TARGET_CONFIG"
 
-          COMPILER_CUSTOM_ENABLE="${{ inputs.custom_compiler_name_enable }}"
-          COMPILER_CUSTOM_NAME="${{ inputs.custom_compiler_name }}"
-
-          if [[ "$COMPILER_CUSTOM_ENABLE" == "true" ]] &&
-             [[ -n "$COMPILER_CUSTOM_NAME" ]] &&
-             [[ "$COMPILER_CUSTOM_NAME" != "none" ]]; then
-
-            COMPILER_NAME="$COMPILER_CUSTOM_NAME"
-
-            echo "🧬 Custom compiler name: ENABLED"
-            echo "📝 Compiler name: $COMPILER_NAME"
-
-          else
-
-            COMPILER_NAME="${{ inputs.compiler }}"
-
-            COMPILER_NAME=$(
-              echo "$COMPILER_NAME" |
-              awk -F'-' \
-              '{print toupper(substr($1,1,1)) substr($1,2) " Clang"}'
-            )
-
-            echo "🧬 Custom compiler name: DISABLED"
-            echo "📝 Compiler name: $COMPILER_NAME"
+            echo "LOCALVERSION_MODE=custom" >> "$GITHUB_ENV"
 
           fi
 
-          RAW_CLANG_VER=$(
-            clang --version 2>/dev/null |
-            grep -oE '[0-9]+\.[0-9]+\.[0-9]+' |
-            head -n 1
-          )
 
-          RAW_LLD_VER=$(
-            ld.lld --version 2>/dev/null |
-            grep -oE '[0-9]+\.[0-9]+\.[0-9]+' |
-            head -n 1
-          )
-
-          RAW_CLANG_VER="${RAW_CLANG_VER:-Custom}"
-          RAW_LLD_VER="${RAW_LLD_VER:-$RAW_CLANG_VER}"
-
-          CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_CLANG_VER} ✦ Pipeline: pgo • autofdo • bolt • propeller • thinlto • mlgo • polly • -o3 ✦ LLD ${RAW_LLD_VER}"
-
-          echo "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" >> "$GITHUB_ENV"
-
-          echo ""
-          echo "🧬 Compiler:"
-          echo "$CUSTOM_COMPILER_STRING"
-
-      # ============================================================
+      # ========================================================
       # PRE-KSU TWEAK
-      # ============================================================
-      - name: 🧩 Apply Tweak .sh / .patch (Pre-KSU)
+      # ========================================================
+
+      - name: 🧩 Apply Pre-KSU Tweaks
         run: |
+          set -e
+
           cd kernel-dir
 
           INPUT_STRING="${{ inputs.custom_tweaks }}"
 
-          if [[ "$INPUT_STRING" == "none" || -z "$INPUT_STRING" ]]; then
+          if [[ "$INPUT_STRING" == "none" ||
+                -z "$INPUT_STRING" ]]; then
+
             echo "⏭️ No Pre-KSU tweak."
+
             exit 0
+
           fi
 
           REPO_TREE_CACHE=$(
@@ -616,8 +854,11 @@ jobs:
             )
 
             if [[ -z "$FILE_PATH" ]]; then
+
               echo "❌ Tweak tidak ditemukan: $file"
+
               exit 1
+
             fi
 
             echo "✅ Applying: $file"
@@ -628,29 +869,37 @@ jobs:
 
             if [[ "$file" == *.patch ]]; then
 
-              patch -p1 < "$file" || exit 1
+              patch -p1 < "$file"
 
             elif [[ "$file" == *.sh ]]; then
 
               chmod +x "$file"
-              bash "$file" || exit 1
+
+              bash "$file"
 
             fi
 
           done
 
-      # ============================================================
+
+      # ========================================================
       # KSU
-      # ============================================================
-      - name: 👑 Config & Install KSU
+      # ========================================================
+
+      - name: 👑 Configure & Install KSU
         run: |
+          set -e
+
           cd kernel-dir
 
           TARGET_CONFIG="${{ env.TARGET_CONFIG }}"
+
           KSU_CHOICE="${{ inputs.kernelsu }}"
+
           SUSFS_ENABLE="${{ inputs.susfs_enable }}"
 
           set_cfg() {
+
             local cfg="$1"
             local value="$2"
 
@@ -663,22 +912,33 @@ jobs:
               "$TARGET_CONFIG"
 
             if [[ "$value" == "y" ]]; then
-              echo "CONFIG_${cfg}=y" >> "$TARGET_CONFIG"
+
+              echo "CONFIG_${cfg}=y" \
+                >> "$TARGET_CONFIG"
+
             else
-              echo "# CONFIG_${cfg} is not set" >> "$TARGET_CONFIG"
+
+              echo "# CONFIG_${cfg} is not set" \
+                >> "$TARGET_CONFIG"
+
             fi
+
           }
 
           enable_cfg() {
+
             for cfg in "$@"; do
               set_cfg "$cfg" y
             done
+
           }
 
           disable_cfg() {
+
             for cfg in "$@"; do
               set_cfg "$cfg" n
             done
+
           }
 
           echo "=========================================="
@@ -691,7 +951,7 @@ jobs:
 
           elif [[ "$KSU_CHOICE" == "apatch" ]]; then
 
-            echo "🧬 APatch configuration..."
+            echo "🧬 APatch configuration."
 
             enable_cfg \
               KALLSYMS \
@@ -702,121 +962,148 @@ jobs:
 
           else
 
-            echo "🔑 Installing KernelSU..."
+            echo "🔑 Installing KernelSU."
 
             enable_cfg KSU
 
             case "$KSU_CHOICE" in
 
               sorayukii)
+
                 curl -LSs \
                   'https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh' |
-                  bash -s hookless || exit 1
+                  bash -s hookless
 
                 enable_cfg \
                   KSU_EXTRAS \
                   KSU_TAMPER_SYSCALL_TABLE
 
                 disable_cfg KPROBES
+
                 ;;
 
               mr-morat)
+
                 curl -LSs \
                   'https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh' |
-                  bash -s syscall || exit 1
+                  bash -s syscall
 
                 enable_cfg \
                   KSU_EXTRAS \
                   KSU_TAMPER_SYSCALL_TABLE
 
                 disable_cfg KPROBES
+
                 ;;
 
               enjoy)
+
                 curl -LSs \
                   'https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh' |
-                  bash -s enjoy || exit 1
+                  bash -s enjoy
 
                 enable_cfg KSU_MANUAL_HOOK
 
                 disable_cfg \
                   KPROBES \
                   HAVE_KPROBES
+
                 ;;
 
               legacy)
+
                 curl -LSs \
                   'https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh' |
-                  bash -s legacy || exit 1
+                  bash -s legacy
 
                 enable_cfg KSU_MANUAL_HOOK
 
                 disable_cfg \
                   KPROBES \
                   HAVE_KPROBES
+
                 ;;
 
               sukisu)
+
                 curl -LSs \
                   'https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh' |
-                  bash -s resukisu || exit 1
+                  bash -s resukisu
 
                 if [[ "$SUSFS_ENABLE" != "true" ]]; then
                   enable_cfg KSU_MANUAL_HOOK
                 fi
+
                 ;;
 
               next)
+
                 curl -LSs \
                   'https://raw.githubusercontent.com/kyzuna28/KernelSU-Next/legacy/kernel/setup.sh' |
-                  bash -s legacy-susfs-v2 || exit 1
+                  bash -s legacy-susfs-v2
 
                 enable_cfg KSU_MANUAL_HOOK
+
                 ;;
 
               resukisu)
+
                 curl -LSs \
                   'https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh' |
-                  bash -s main || exit 1
+                  bash -s main
 
                 if [[ "$SUSFS_ENABLE" != "true" ]]; then
                   enable_cfg KSU_MANUAL_HOOK
                 fi
+
                 ;;
 
               thre)
+
                 curl -LSs \
                   'https://raw.githubusercontent.com/ThRE-Team/KernelSU-Next/main/kernel/setup.sh' |
-                  bash -s main || exit 1
+                  bash -s main
 
                 disable_cfg \
                   KPROBES \
                   HAVE_KPROBES
 
                 enable_cfg KSU_MANUAL_HOOK
+
                 ;;
 
               *)
-                echo "❌ Unknown KSU method: $KSU_CHOICE"
+
+                echo "❌ Unknown KSU method."
+
                 exit 1
+
                 ;;
 
             esac
 
           fi
 
-      # ============================================================
+
+      # ========================================================
       # SUSFS CUSTOM
-      # ============================================================
-      - name: 🪝 Apply SuSFS Script / Patch
+      # ========================================================
+
+      - name: 🪝 Apply SuSFS Custom
         run: |
+          set -e
+
           cd kernel-dir
 
           INPUT_STRING="${{ inputs.susfs_custom }}"
 
-          if [[ "$INPUT_STRING" == "none" || -z "$INPUT_STRING" ]]; then
+          if [[ "$INPUT_STRING" == "none" ||
+                -z "$INPUT_STRING" ]]; then
+
             echo "⏭️ No SuSFS custom patch."
+
             exit 0
+
           fi
 
           REPO_TREE_CACHE=$(
@@ -842,8 +1129,11 @@ jobs:
             )
 
             if [[ -z "$FILE_PATH" ]]; then
+
               echo "❌ SuSFS file tidak ditemukan: $file"
+
               exit 1
+
             fi
 
             echo "✅ Applying SuSFS: $file"
@@ -855,30 +1145,37 @@ jobs:
             if [[ "$file" == *.patch ]]; then
 
               patch -p1 < "$file" || {
-                echo "⚠️ Patch menghasilkan reject."
+                echo "⚠️ Patch reject."
                 echo "⚠️ Build tetap dilanjutkan."
               }
 
             elif [[ "$file" == *.sh ]]; then
 
               chmod +x "$file"
-              bash "$file" || exit 1
+
+              bash "$file"
 
             fi
 
           done
 
-      # ============================================================
+
+      # ========================================================
       # SUSFS CONFIG
-      # ============================================================
+      # ========================================================
+
       - name: 🛡️ Configure SuSFS
         run: |
+          set -e
+
           cd kernel-dir
 
           TARGET_CONFIG="${{ env.TARGET_CONFIG }}"
+
           SUSFS_ENABLE="${{ inputs.susfs_enable }}"
 
           set_cfg() {
+
             local cfg="$1"
             local value="$2"
 
@@ -891,27 +1188,38 @@ jobs:
               "$TARGET_CONFIG"
 
             if [[ "$value" == "y" ]]; then
-              echo "CONFIG_${cfg}=y" >> "$TARGET_CONFIG"
+
+              echo "CONFIG_${cfg}=y" \
+                >> "$TARGET_CONFIG"
+
             else
-              echo "# CONFIG_${cfg} is not set" >> "$TARGET_CONFIG"
+
+              echo "# CONFIG_${cfg} is not set" \
+                >> "$TARGET_CONFIG"
+
             fi
+
           }
 
           enable_cfg() {
+
             for cfg in "$@"; do
               set_cfg "$cfg" y
             done
+
           }
 
           disable_cfg() {
+
             for cfg in "$@"; do
               set_cfg "$cfg" n
             done
+
           }
 
           if [[ "$SUSFS_ENABLE" == "true" ]]; then
 
-            echo "🛡️ Enabling SuSFS..."
+            echo "🛡️ Enabling SuSFS."
 
             enable_cfg \
               KSU_SUSFS \
@@ -925,8 +1233,10 @@ jobs:
               KSU_SUSFS_OPEN_REDIRECT \
               KSU_SUSFS_SUS_MAP
 
-            if grep -q "THREAD_INFO_IN_TASK" \
-              drivers/kernelsu/Kconfig 2>/dev/null; then
+            if grep -q \
+              "THREAD_INFO_IN_TASK" \
+              drivers/kernelsu/Kconfig \
+              2>/dev/null; then
 
               enable_cfg THREAD_INFO_IN_TASK
 
@@ -940,18 +1250,26 @@ jobs:
 
           fi
 
-      # ============================================================
+
+      # ========================================================
       # CUSTOM HOOK
-      # ============================================================
-      - name: 💉 Apply Custom Hook Script / Patch
+      # ========================================================
+
+      - name: 💉 Apply Custom Hooks
         run: |
+          set -e
+
           cd kernel-dir
 
           INPUT_STRING="${{ inputs.custom_hooks }}"
 
-          if [[ "$INPUT_STRING" == "none" || -z "$INPUT_STRING" ]]; then
+          if [[ "$INPUT_STRING" == "none" ||
+                -z "$INPUT_STRING" ]]; then
+
             echo "⏭️ No custom hook."
+
             exit 0
+
           fi
 
           REPO_TREE_CACHE=$(
@@ -977,8 +1295,11 @@ jobs:
             )
 
             if [[ -z "$FILE_PATH" ]]; then
+
               echo "❌ Hook tidak ditemukan: $file"
+
               exit 1
+
             fi
 
             echo "✅ Applying Hook: $file"
@@ -989,28 +1310,35 @@ jobs:
 
             if [[ "$file" == *.patch ]]; then
 
-              patch -p1 < "$file" || exit 1
+              patch -p1 < "$file"
 
             elif [[ "$file" == *.sh ]]; then
 
               chmod +x "$file"
-              bash "$file" || exit 1
+
+              bash "$file"
 
             fi
 
           done
 
-      # ============================================================
+
+      # ========================================================
       # LTO
-      # ============================================================
-      - name: 🚀 Setup LTO Optimization
+      # ========================================================
+
+      - name: 🚀 Configure LTO
         run: |
+          set -e
+
           cd kernel-dir
 
           TARGET_CONFIG="${{ env.TARGET_CONFIG }}"
+
           LTO_MODE="${{ inputs.lto_mode }}"
 
           set_cfg() {
+
             local cfg="$1"
             local value="$2"
 
@@ -1023,22 +1351,33 @@ jobs:
               "$TARGET_CONFIG"
 
             if [[ "$value" == "y" ]]; then
-              echo "CONFIG_${cfg}=y" >> "$TARGET_CONFIG"
+
+              echo "CONFIG_${cfg}=y" \
+                >> "$TARGET_CONFIG"
+
             else
-              echo "# CONFIG_${cfg} is not set" >> "$TARGET_CONFIG"
+
+              echo "# CONFIG_${cfg} is not set" \
+                >> "$TARGET_CONFIG"
+
             fi
+
           }
 
           enable_cfg() {
+
             for cfg in "$@"; do
               set_cfg "$cfg" y
             done
+
           }
 
           disable_cfg() {
+
             for cfg in "$@"; do
               set_cfg "$cfg" n
             done
+
           }
 
           echo "🧬 LTO Mode: $LTO_MODE"
@@ -1054,47 +1393,66 @@ jobs:
           case "$LTO_MODE" in
 
             full)
+
               enable_cfg \
                 LTO \
                 LTO_CLANG \
                 LTO_CLANG_FULL
+
               ;;
 
             thin)
+
               enable_cfg \
                 LTO \
                 LTO_CLANG \
                 LTO_CLANG_THIN \
                 THINLTO
+
               ;;
 
             "no lto")
+
               enable_cfg LTO_NONE
+
               ;;
 
             *)
-              echo "❌ Unknown LTO mode: $LTO_MODE"
+
+              echo "❌ Invalid LTO mode."
+
               exit 1
+
               ;;
 
           esac
 
-      # ============================================================
+
+      # ========================================================
       # EXTRA CONFIG
-      # ============================================================
+      # ========================================================
+
       - name: 🛠️ Apply Extra Config
         run: |
+          set -e
+
           cd kernel-dir
 
           TARGET_CONFIG="${{ env.TARGET_CONFIG }}"
+
           EXTRA_CONFIG="${{ inputs.extra_config }}"
 
-          if [[ "$EXTRA_CONFIG" == "none" || -z "$EXTRA_CONFIG" ]]; then
+          if [[ "$EXTRA_CONFIG" == "none" ||
+                -z "$EXTRA_CONFIG" ]]; then
+
             echo "⏭️ No extra config."
+
             exit 0
+
           fi
 
           set_cfg() {
+
             local cfg="$1"
             local value="$2"
 
@@ -1107,10 +1465,17 @@ jobs:
               "$TARGET_CONFIG"
 
             if [[ "$value" == "y" ]]; then
-              echo "CONFIG_${cfg}=y" >> "$TARGET_CONFIG"
+
+              echo "CONFIG_${cfg}=y" \
+                >> "$TARGET_CONFIG"
+
             else
-              echo "# CONFIG_${cfg} is not set" >> "$TARGET_CONFIG"
+
+              echo "# CONFIG_${cfg} is not set" \
+                >> "$TARGET_CONFIG"
+
             fi
+
           }
 
           IFS=',' read -ra CONFIGS <<< "$EXTRA_CONFIG"
@@ -1161,41 +1526,38 @@ jobs:
 
           done
 
-      # ============================================================
-      # COMPILE
-      # ============================================================
-      - name: 🔨 Compile Kernel
+
+      # ========================================================
+      # DEFCONFIG
+      # ========================================================
+
+      - name: ⚙️ Generate Defconfig
         run: |
+          set -e
+
           cd kernel-dir
 
           export PATH="$HOME/tc/bin:$PATH"
 
-          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-          export KBUILD_BUILD_HOST="project"
-          export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
+          BASENAME_CONFIG="${{ env.MAKE_DEFCONFIG }}"
 
-          export LLVM_PARALLEL=1
+          if [[ ! -f \
+            "arch/arm64/configs/$BASENAME_CONFIG" ]]; then
 
-          if [[ "${{ inputs.version_hash }}" == "no hash" ]]; then
-            echo "" > .scmversion
-            export LOCALVERSION_AUTO=""
-          else
-            rm -f .scmversion
+            echo "❌ Defconfig tidak ditemukan:"
+            echo "arch/arm64/configs/$BASENAME_CONFIG"
+
+            exit 1
+
           fi
 
           rm -rf ../out
+
           mkdir -p ../out
 
-          BASENAME_CONFIG="${{ env.MAKE_DEFCONFIG }}"
-
-          if [[ ! -f "arch/arm64/configs/$BASENAME_CONFIG" ]]; then
-            echo "❌ Defconfig tidak ditemukan:"
-            echo "   arch/arm64/configs/$BASENAME_CONFIG"
-            exit 1
-          fi
-
-          echo "⚙️ Running defconfig:"
-          echo "$BASENAME_CONFIG"
+          echo "=========================================="
+          echo "GENERATING DEFCONFIG"
+          echo "=========================================="
 
           make \
             -s \
@@ -1203,13 +1565,499 @@ jobs:
             O=../out \
             "$BASENAME_CONFIG"
 
-          EXTRA_CFLAGS=""
+          if [[ ! -f ../out/.config ]]; then
 
-          if [[ "${{ inputs.compiler }}" == "debian-clang" ]]; then
-            EXTRA_CFLAGS="--target=aarch64-linux-gnu"
+            echo "❌ .config tidak berhasil dibuat."
+
+            exit 1
+
           fi
 
-          OPTIMIZATION_FLAGS="-O3"
+          echo ""
+          echo "Compiler selected by config:"
+
+          grep -E \
+            '^CONFIG_CC_IS_|^CONFIG_LD_IS_' \
+            ../out/.config \
+            2>/dev/null || true
+
+
+      # ========================================================
+      # COMPILER RESOLVER
+      # ========================================================
+
+      - name: 🧠 Auto Detect Compiler & Build Environment
+        run: |
+          set -e
+
+          cd kernel-dir
+
+          export PATH="$HOME/tc/bin:$PATH"
+
+          REQUESTED_MODE="${{ inputs.compiler_mode }}"
+
+          REQUESTED_COMPILER="${{ inputs.compiler }}"
+
+          IAS_MODE="${{ inputs.llvm_ias }}"
+
+          echo "=========================================="
+          echo "SMART COMPILER RESOLVER"
+          echo "=========================================="
+
+          echo "Requested Mode      : $REQUESTED_MODE"
+          echo "Requested Compiler  : $REQUESTED_COMPILER"
+          echo "Requested LLVM IAS  : $IAS_MODE"
+
+          COMPILER_MODE="$REQUESTED_MODE"
+
+          # ----------------------------------------------------
+          # AUTO COMPILER DETECTION
+          # ----------------------------------------------------
+
+          if [[ "$COMPILER_MODE" == "auto" ]]; then
+
+            if grep -q \
+              '^CONFIG_CC_IS_CLANG=y' \
+              ../out/.config \
+              2>/dev/null; then
+
+              COMPILER_MODE="clang"
+
+              echo "🧠 Config requests Clang."
+
+            elif grep -q \
+              '^CONFIG_CC_IS_GCC=y' \
+              ../out/.config \
+              2>/dev/null; then
+
+              COMPILER_MODE="gcc"
+
+              echo "🧠 Config requests GCC."
+
+            elif grep -q \
+              'CONFIG_LTO_CLANG=y' \
+              ../out/.config \
+              2>/dev/null; then
+
+              COMPILER_MODE="clang"
+
+              echo "🧠 LTO-Clang detected."
+
+            else
+
+              # Old kernels generally have better GCC compatibility.
+              # Explicit compiler choice can still override this.
+
+              if [[ "$REQUESTED_COMPILER" == *clang* ]]; then
+
+                COMPILER_MODE="clang"
+
+                echo "🧠 Clang toolchain selected."
+
+              else
+
+                COMPILER_MODE="gcc"
+
+                echo "🧠 GCC fallback selected."
+
+              fi
+
+            fi
+
+          fi
+
+          # ----------------------------------------------------
+          # VALIDATE GCC
+          # ----------------------------------------------------
+
+          if [[ "$COMPILER_MODE" == "gcc" ]]; then
+
+            echo ""
+            echo "=========================================="
+            echo "GNU GCC MODE"
+            echo "=========================================="
+
+            command -v gcc
+
+            command -v aarch64-linux-gnu-gcc
+
+            command -v arm-linux-gnueabi-gcc
+
+            GCC_VERSION=$(
+              aarch64-linux-gnu-gcc \
+                --version |
+              head -n 1
+            )
+
+            echo "AArch64 GCC: $GCC_VERSION"
+
+            BUILD_CC="aarch64-linux-gnu-gcc"
+
+            BUILD_HOSTCC="gcc"
+
+            BUILD_HOSTCXX="g++"
+
+            BUILD_LD="aarch64-linux-gnu-ld"
+
+            BUILD_HOSTLD="ld"
+
+            BUILD_AR="aarch64-linux-gnu-ar"
+
+            BUILD_HOSTAR="ar"
+
+            BUILD_NM="aarch64-linux-gnu-nm"
+
+            BUILD_OBJCOPY="aarch64-linux-gnu-objcopy"
+
+            BUILD_OBJDUMP="aarch64-linux-gnu-objdump"
+
+            BUILD_STRIP="aarch64-linux-gnu-strip"
+
+            BUILD_READELF="aarch64-linux-gnu-readelf"
+
+            BUILD_LLVM="0"
+
+            BUILD_IAS="0"
+
+          # ----------------------------------------------------
+          # CLANG
+          # ----------------------------------------------------
+
+          elif [[ "$COMPILER_MODE" == "clang" ]]; then
+
+            echo ""
+            echo "=========================================="
+            echo "LLVM / CLANG MODE"
+            echo "=========================================="
+
+            if ! command -v clang >/dev/null 2>&1; then
+
+              echo "❌ clang not found."
+
+              exit 1
+
+            fi
+
+            if ! command -v ld.lld >/dev/null 2>&1; then
+
+              echo "❌ ld.lld not found."
+
+              exit 1
+
+            fi
+
+            BUILD_CC="clang"
+
+            BUILD_HOSTCC="clang"
+
+            BUILD_HOSTCXX="clang++"
+
+            BUILD_LD="ld.lld"
+
+            BUILD_HOSTLD="ld.lld"
+
+            BUILD_AR="llvm-ar"
+
+            BUILD_HOSTAR="llvm-ar"
+
+            BUILD_NM="llvm-nm"
+
+            BUILD_OBJCOPY="llvm-objcopy"
+
+            BUILD_OBJDUMP="llvm-objdump"
+
+            BUILD_STRIP="llvm-strip"
+
+            BUILD_READELF="llvm-readelf"
+
+            BUILD_LLVM="1"
+
+            if [[ "$IAS_MODE" == "enabled" ]]; then
+
+              BUILD_IAS="1"
+
+            elif [[ "$IAS_MODE" == "disabled" ]]; then
+
+              BUILD_IAS="0"
+
+            else
+
+              # Auto:
+              # Old kernels sometimes fail with LLVM IAS.
+              # Modern LLVM-compatible kernels generally work.
+
+              if grep -q \
+                'CONFIG_CC_IS_CLANG=y' \
+                ../out/.config \
+                2>/dev/null; then
+
+                BUILD_IAS="1"
+
+              else
+
+                BUILD_IAS="1"
+
+              fi
+
+            fi
+
+          else
+
+            echo "❌ Unknown compiler mode:"
+            echo "$COMPILER_MODE"
+
+            exit 1
+
+          fi
+
+          # ----------------------------------------------------
+          # SAVE BUILD ENVIRONMENT
+          # ----------------------------------------------------
+
+          {
+
+            echo "COMPILER_MODE=$COMPILER_MODE"
+
+            echo "BUILD_CC=$BUILD_CC"
+
+            echo "BUILD_HOSTCC=$BUILD_HOSTCC"
+
+            echo "BUILD_HOSTCXX=$BUILD_HOSTCXX"
+
+            echo "BUILD_LD=$BUILD_LD"
+
+            echo "BUILD_HOSTLD=$BUILD_HOSTLD"
+
+            echo "BUILD_AR=$BUILD_AR"
+
+            echo "BUILD_HOSTAR=$BUILD_HOSTAR"
+
+            echo "BUILD_NM=$BUILD_NM"
+
+            echo "BUILD_OBJCOPY=$BUILD_OBJCOPY"
+
+            echo "BUILD_OBJDUMP=$BUILD_OBJDUMP"
+
+            echo "BUILD_STRIP=$BUILD_STRIP"
+
+            echo "BUILD_READELF=$BUILD_READELF"
+
+            echo "BUILD_LLVM=$BUILD_LLVM"
+
+            echo "BUILD_IAS=$BUILD_IAS"
+
+          } >> "$GITHUB_ENV"
+
+          echo ""
+          echo "=========================================="
+          echo "FINAL COMPILER"
+          echo "=========================================="
+
+          echo "Mode     : $COMPILER_MODE"
+          echo "CC       : $BUILD_CC"
+          echo "HOSTCC   : $BUILD_HOSTCC"
+          echo "LD       : $BUILD_LD"
+          echo "LLVM     : $BUILD_LLVM"
+          echo "LLVM IAS : $BUILD_IAS"
+
+          echo ""
+          echo "Compiler version:"
+
+          "$BUILD_CC" --version 2>/dev/null |
+            head -n 2 || true
+
+          echo ""
+          echo "Linker version:"
+
+          "$BUILD_LD" --version 2>/dev/null |
+            head -n 2 || true
+
+
+      # ========================================================
+      # COMPILER STRING
+      # ========================================================
+
+      - name: 🧬 Generate Compiler String
+        run: |
+          set -e
+
+          cd kernel-dir
+
+          export PATH="$HOME/tc/bin:$PATH"
+
+          CUSTOM_ENABLE="${{ inputs.custom_compiler_name_enable }}"
+
+          CUSTOM_NAME="${{ inputs.custom_compiler_name }}"
+
+          if [[ "$CUSTOM_ENABLE" == "true" ]] &&
+             [[ -n "$CUSTOM_NAME" ]] &&
+             [[ "$CUSTOM_NAME" != "none" ]]; then
+
+            COMPILER_NAME="$CUSTOM_NAME"
+
+          else
+
+            if [[ "${{ env.COMPILER_MODE }}" == "gcc" ]]; then
+
+              COMPILER_NAME="GNU GCC"
+
+            else
+
+              COMPILER_NAME="${{ inputs.compiler }}"
+
+              COMPILER_NAME=$(
+                echo "$COMPILER_NAME" |
+                awk -F'-' \
+                '{print toupper(substr($1,1,1)) substr($1,2) " Clang"}'
+              )
+
+            fi
+
+          fi
+
+          if [[ "${{ env.COMPILER_MODE }}" == "gcc" ]]; then
+
+            RAW_COMPILER_VER=$(
+              aarch64-linux-gnu-gcc \
+                --version |
+              grep -oE \
+                '[0-9]+\.[0-9]+\.[0-9]+' |
+              head -n 1
+            )
+
+            RAW_LLD_VER="GNU ld"
+
+          else
+
+            RAW_COMPILER_VER=$(
+              clang \
+                --version \
+                2>/dev/null |
+              grep -oE \
+                '[0-9]+\.[0-9]+\.[0-9]+' |
+              head -n 1
+            )
+
+            RAW_LLD_VER=$(
+              ld.lld \
+                --version \
+                2>/dev/null |
+              grep -oE \
+                '[0-9]+\.[0-9]+\.[0-9]+' |
+              head -n 1
+            )
+
+          fi
+
+          RAW_COMPILER_VER="${RAW_COMPILER_VER:-Custom}"
+
+          RAW_LLD_VER="${RAW_LLD_VER:-Custom}"
+
+          CUSTOM_COMPILER_STRING="${COMPILER_NAME} ${RAW_COMPILER_VER} ✦ Pipeline: pgo • autofdo • bolt • propeller • thinlto • mlgo • polly • -o3 ✦ LLD ${RAW_LLD_VER}"
+
+          echo \
+            "CUSTOM_COMPILER_STRING=$CUSTOM_COMPILER_STRING" \
+            >> "$GITHUB_ENV"
+
+          echo ""
+          echo "=========================================="
+          echo "KBUILD COMPILER STRING"
+          echo "=========================================="
+
+          echo "$CUSTOM_COMPILER_STRING"
+
+
+      # ========================================================
+      # FINAL CONFIG VALIDATION
+      # ========================================================
+
+      - name: 🔍 Validate Kernel Configuration
+        run: |
+          set -e
+
+          cd kernel-dir
+
+          echo "=========================================="
+          echo "CONFIG VALIDATION"
+          echo "=========================================="
+
+          if [[ ! -f ../out/.config ]]; then
+
+            echo "❌ Generated .config missing."
+
+            exit 1
+
+          fi
+
+          echo "Architecture:"
+          grep \
+            '^CONFIG_ARCH=' \
+            ../out/.config \
+            2>/dev/null || true
+
+          echo ""
+          echo "Compiler:"
+          grep \
+            '^CONFIG_CC_IS_' \
+            ../out/.config \
+            2>/dev/null || true
+
+          echo ""
+          echo "LTO:"
+          grep \
+            -E \
+            '^CONFIG_LTO|^CONFIG_THINLTO' \
+            ../out/.config \
+            2>/dev/null || true
+
+          echo ""
+          echo "KSU:"
+          grep \
+            -E \
+            '^CONFIG_KSU=|^CONFIG_KSU_SUSFS=' \
+            ../out/.config \
+            2>/dev/null || true
+
+
+      # ========================================================
+      # COMPILE
+      # ========================================================
+
+      - name: 🔨 Compile Kernel
+        run: |
+          set -o pipefail
+
+          cd kernel-dir
+
+          export PATH="$HOME/tc/bin:$PATH"
+
+          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
+
+          export KBUILD_BUILD_HOST="project"
+
+          export KBUILD_COMPILER_STRING="$CUSTOM_COMPILER_STRING"
+
+          export LLVM_PARALLEL=1
+
+          # ----------------------------------------------------
+          # VERSION HASH
+          # ----------------------------------------------------
+
+          if [[ "${{ inputs.version_hash }}" == "no hash" ]]; then
+
+            echo "" > .scmversion
+
+            export LOCALVERSION_AUTO=""
+
+          else
+
+            rm -f .scmversion
+
+          fi
+
+          # ----------------------------------------------------
+          # CORES / JOBS
+          # ----------------------------------------------------
 
           CORES=$(nproc --all)
 
@@ -1227,16 +2075,23 @@ jobs:
             MAKE_JOBS=8
           fi
 
-          CLEAN_ROM=$(echo "${{ inputs.rom_type }}" | xargs)
-          CLEAN_KERNEL=$(echo "${{ inputs.kernel_name }}" | xargs)
+          # ----------------------------------------------------
+          # LOCALVERSION
+          # ----------------------------------------------------
 
-          if [[ -z "$CLEAN_ROM" ]]; then
-            CLEAN_ROM="none"
-          fi
+          CLEAN_KERNEL=$(
+            echo "${{ inputs.kernel_name }}" |
+            xargs
+          )
 
-          if [[ -z "$CLEAN_KERNEL" ]]; then
-            CLEAN_KERNEL="none"
-          fi
+          CLEAN_ROM=$(
+            echo "${{ inputs.rom_type }}" |
+            xargs
+          )
+
+          [[ -z "$CLEAN_KERNEL" ]] && CLEAN_KERNEL="none"
+
+          [[ -z "$CLEAN_ROM" ]] && CLEAN_ROM="none"
 
           LOCALVERSION=""
 
@@ -1248,79 +2103,177 @@ jobs:
             LOCALVERSION="$LOCALVERSION-$CLEAN_ROM"
           fi
 
+          # ----------------------------------------------------
+          # GCC / CLANG FLAGS
+          # ----------------------------------------------------
+
+          EXTRA_CFLAGS=""
+
+          if [[ "${{ env.COMPILER_MODE }}" == "gcc" ]]; then
+
+            EXTRA_CFLAGS=""
+
+          else
+
+            EXTRA_CFLAGS="-Qunused-arguments"
+
+          fi
+
+          # ----------------------------------------------------
+          # LLVM ARGUMENTS
+          # ----------------------------------------------------
+
+          BUILD_ARGS=()
+
+          if [[ "${{ env.COMPILER_MODE }}" == "clang" ]]; then
+
+            BUILD_ARGS+=(
+              "LLVM=1"
+              "LLVM_IAS=${{ env.BUILD_IAS }}"
+              "CC=${{ env.BUILD_CC }}"
+              "HOSTCC=${{ env.BUILD_HOSTCC }}"
+              "HOSTCXX=${{ env.BUILD_HOSTCXX }}"
+              "LD=${{ env.BUILD_LD }}"
+              "HOSTLD=${{ env.BUILD_HOSTLD }}"
+              "AR=${{ env.BUILD_AR }}"
+              "HOSTAR=${{ env.BUILD_HOSTAR }}"
+              "NM=${{ env.BUILD_NM }}"
+              "OBJCOPY=${{ env.BUILD_OBJCOPY }}"
+              "OBJDUMP=${{ env.BUILD_OBJDUMP }}"
+              "STRIP=${{ env.BUILD_STRIP }}"
+              "READELF=${{ env.BUILD_READELF }}"
+            )
+
+          else
+
+            BUILD_ARGS+=(
+              "CC=${{ env.BUILD_CC }}"
+              "HOSTCC=${{ env.BUILD_HOSTCC }}"
+              "HOSTCXX=${{ env.BUILD_HOSTCXX }}"
+              "LD=${{ env.BUILD_LD }}"
+              "HOSTLD=${{ env.BUILD_HOSTLD }}"
+              "AR=${{ env.BUILD_AR }}"
+              "HOSTAR=${{ env.BUILD_HOSTAR }}"
+              "NM=${{ env.BUILD_NM }}"
+              "OBJCOPY=${{ env.BUILD_OBJCOPY }}"
+              "OBJDUMP=${{ env.BUILD_OBJDUMP }}"
+              "STRIP=${{ env.BUILD_STRIP }}"
+              "READELF=${{ env.BUILD_READELF }}"
+            )
+
+          fi
+
+          # ----------------------------------------------------
+          # BUILD INFO
+          # ----------------------------------------------------
+
+          echo ""
           echo "=========================================="
-          echo "BUILD INFORMATION"
+          echo "FINAL BUILD INFORMATION"
           echo "=========================================="
+
           echo "CPU Cores : $CORES"
           echo "Jobs      : $MAKE_JOBS"
-          echo "Compiler  : $(clang --version | head -n 1)"
-          echo "LLD       : $(ld.lld --version | head -n 1)"
+          echo "Compiler  : ${{ env.COMPILER_MODE }}"
+          echo "CC        : ${{ env.BUILD_CC }}"
+          echo "LD        : ${{ env.BUILD_LD }}"
+          echo "LLVM      : ${{ env.BUILD_LLVM }}"
+          echo "LLVM IAS  : ${{ env.BUILD_IAS }}"
           echo "LTO       : ${{ inputs.lto_mode }}"
           echo "Kernel    : $CLEAN_KERNEL"
           echo "ROM       : $CLEAN_ROM"
-          echo "LocalVer  : ${LOCALVERSION:-<empty>}"
+          echo "Version   : ${LOCALVERSION:-<preserved>}"
+
           echo "=========================================="
 
-          set -o pipefail
+          # ----------------------------------------------------
+          # BUILD
+          # ----------------------------------------------------
 
           make \
             -j"$MAKE_JOBS" \
             ARCH=arm64 \
             O=../out \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            CC=clang \
-            HOSTCC=clang \
-            HOSTCXX=clang++ \
-            LD=ld.lld \
-            HOSTLD=ld.lld \
-            AR=llvm-ar \
-            HOSTAR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
-            READELF=llvm-readelf \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             LOCALVERSION="$LOCALVERSION" \
-            KCFLAGS="$OPTIMIZATION_FLAGS -w -Qunused-arguments $EXTRA_CFLAGS" \
+            KCFLAGS="-O3 -w $EXTRA_CFLAGS" \
             HOSTCFLAGS="-w" \
+            "${BUILD_ARGS[@]}" \
             Image.gz \
             Image.gz-dtb \
             dtbs \
             2>&1 |
+            tee ../build.log |
             grep -vE \
               'clang: warning:|ld.lld: warning:|Broken pipe|no symbols' \
             || {
-              echo "❌ [ERROR] Kompilasi gagal!"
+
+              echo ""
+              echo "=========================================="
+              echo "❌ KERNEL BUILD FAILED"
+              echo "=========================================="
+
+              tail -n 100 ../build.log
+
               exit 1
             }
 
+          # ----------------------------------------------------
+          # VERIFY IMAGE
+          # ----------------------------------------------------
+
           KERNEL_DIR="../out/arch/arm64/boot"
+
+          echo ""
+          echo "=========================================="
+          echo "KERNEL OUTPUT"
+          echo "=========================================="
+
+          find \
+            "$KERNEL_DIR" \
+            -maxdepth 3 \
+            -type f \
+            -printf '%p\n' |
+            sort
 
           if [[ -s "$KERNEL_DIR/Image.gz" ]]; then
 
-            echo "✅ Image.gz berhasil dibuat."
+            echo "✅ Image.gz generated."
 
           elif [[ -s "$KERNEL_DIR/Image.gz-dtb" ]]; then
 
-            echo "✅ Image.gz-dtb berhasil dibuat."
+            echo "✅ Image.gz-dtb generated."
+
+          elif [[ -s "$KERNEL_DIR/Image-dtb" ]]; then
+
+            echo "✅ Image-dtb generated."
+
+          elif [[ -s "$KERNEL_DIR/Image" ]]; then
+
+            echo "✅ Image generated."
 
           else
 
-            echo "❌ Image kernel tidak ditemukan."
+            echo "❌ No kernel image found."
+
             exit 1
 
           fi
 
-      # ============================================================
-      # ANYKERNEL3
-      # ============================================================
+
+      # ========================================================
+      # PACKAGE
+      # ========================================================
+
       - name: 📦 Package with AnyKernel3
         run: |
-          echo "📥 Cloning AnyKernel3..."
+          set -e
+
+          echo "=========================================="
+          echo "ANYKERNEL3"
+          echo "=========================================="
 
           git clone \
             --depth=1 \
@@ -1347,14 +2300,18 @@ jobs:
 
           KERNEL_DIR="out/arch/arm64/boot"
 
-          echo "⚙️ Preparing kernel..."
+          echo "Preparing kernel image."
+
+          # ----------------------------------------------------
+          # AUTO IMAGE DETECTION
+          # ----------------------------------------------------
 
           if [[ \
             -f "$KERNEL_DIR/Image.gz" &&
             -f "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb"
           ]]; then
 
-            echo "📦 Creating Image.gz-dtb..."
+            echo "📦 Creating Image.gz-dtb."
 
             cat \
               "$KERNEL_DIR/Image.gz" \
@@ -1363,7 +2320,7 @@ jobs:
 
           elif [[ -f "$KERNEL_DIR/Image.gz-dtb" ]]; then
 
-            echo "✅ Using existing Image.gz-dtb."
+            echo "✅ Using Image.gz-dtb."
 
             cp \
               "$KERNEL_DIR/Image.gz-dtb" \
@@ -1371,7 +2328,7 @@ jobs:
 
           elif [[ -f "$KERNEL_DIR/Image-dtb" ]]; then
 
-            echo "✅ Using existing Image-dtb."
+            echo "✅ Using Image-dtb."
 
             cp \
               "$KERNEL_DIR/Image-dtb" \
@@ -1388,7 +2345,8 @@ jobs:
           elif [[ -f "$KERNEL_DIR/Image" ]]; then
 
             echo "⚠️ Image.gz not found."
-            echo "🗜️ Compressing Image..."
+
+            echo "🗜️ Compressing Image."
 
             gzip -n -9 \
               < "$KERNEL_DIR/Image" \
@@ -1397,13 +2355,18 @@ jobs:
           else
 
             echo "❌ Kernel Image tidak ditemukan."
+
             exit 1
 
           fi
 
+          # ----------------------------------------------------
+          # DTBO
+          # ----------------------------------------------------
+
           if [[ -f "$KERNEL_DIR/dtbo.img" ]]; then
 
-            echo "💾 Copying dtbo.img..."
+            echo "💾 Copying dtbo.img."
 
             cp \
               "$KERNEL_DIR/dtbo.img" \
@@ -1411,34 +2374,144 @@ jobs:
 
           fi
 
-          echo "🔍 Verifying package..."
+          # ----------------------------------------------------
+          # DTB FALLBACK
+          # ----------------------------------------------------
 
-          if ls AnyKernel3/Image* >/dev/null 2>&1; then
+          if [[ ! -f AnyKernel3/Image.gz-dtb ]] &&
+             [[ -f "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" ]]; then
 
-            echo "✨ Kernel berhasil dipaketkan."
+            if [[ -f AnyKernel3/Image.gz ]]; then
 
-          else
+              echo "📦 Appending beryllium DTB."
 
-            echo "❌ Image tidak ditemukan di AnyKernel3."
+              cat \
+                AnyKernel3/Image.gz \
+                "$KERNEL_DIR/dts/qcom/sdm845-beryllium.dtb" \
+                > AnyKernel3/Image.gz-dtb
+
+              rm -f AnyKernel3/Image.gz
+
+            fi
+
+          fi
+
+          # ----------------------------------------------------
+          # VERIFY
+          # ----------------------------------------------------
+
+          echo ""
+          echo "=========================================="
+          echo "PACKAGE VERIFICATION"
+          echo "=========================================="
+
+          ls -lah AnyKernel3/
+
+          if ! ls AnyKernel3/Image* >/dev/null 2>&1; then
+
+            echo "❌ Kernel image missing from package."
+
             exit 1
 
           fi
 
+          echo "✨ Kernel successfully packaged."
+
+
+      # ========================================================
+      # FINAL NAME
+      # ========================================================
+
+      - name: 🏷️ Generate Artifact Name
+        run: |
           CLEAN_ZIP_NAME=$(
             echo "${{ inputs.zip_name }}" |
+            xargs |
             tr ' ' '_'
           )
 
-          echo "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" >> "$GITHUB_ENV"
+          [[ -z "$CLEAN_ZIP_NAME" ]] &&
+            CLEAN_ZIP_NAME="Kyzuna-Kernel"
 
-      # ============================================================
+          echo \
+            "FINAL_ARTIFACT_NAME=$CLEAN_ZIP_NAME" \
+            >> "$GITHUB_ENV"
+
+          echo ""
+          echo "=========================================="
+          echo "FINAL ARTIFACT"
+          echo "=========================================="
+
+          echo "$CLEAN_ZIP_NAME"
+
+
+      # ========================================================
+      # BUILD LOG
+      # ========================================================
+
+      - name: 📋 Prepare Build Information
+        run: |
+          cat > build-info.txt <<EOF
+          ==========================================
+          KYZUNA UNIVERSAL KERNEL BUILDER
+          ==========================================
+
+          Project       : ${{ inputs.project_name }}
+
+          Kernel URL    : ${{ inputs.kernel-url }}
+
+          Kernel Branch : ${{ inputs.kernel-branch }}
+
+          Kernel Config : ${{ inputs.kernel-config }}
+
+          Kernel Name   : ${{ inputs.kernel_name }}
+
+          ROM Type      : ${{ inputs.rom_type }}
+
+          Compiler Mode : ${{ env.COMPILER_MODE }}
+
+          Compiler      : ${{ inputs.compiler }}
+
+          Compiler Name : $CUSTOM_COMPILER_STRING
+
+          CC            : ${{ env.BUILD_CC }}
+
+          LD            : ${{ env.BUILD_LD }}
+
+          LLVM          : ${{ env.BUILD_LLVM }}
+
+          LLVM IAS      : ${{ env.BUILD_IAS }}
+
+          LTO           : ${{ inputs.lto_mode }}
+
+          KSU           : ${{ inputs.kernelsu }}
+
+          SuSFS         : ${{ inputs.susfs_enable }}
+
+          Version Hash  : ${{ inputs.version_hash }}
+
+          ==========================================
+          EOF
+
+          cat build-info.txt
+
+
+      # ========================================================
       # UPLOAD
-      # ============================================================
-      - name: 📤 Upload Artifacts
+      # ========================================================
+
+      - name: 📤 Upload Kernel Artifact
         uses: actions/upload-artifact@v4
+
         with:
           name: '${{ env.FINAL_ARTIFACT_NAME }}'
-          path: AnyKernel3/
+
+          path: |
+            AnyKernel3/
+            build-info.txt
+            build.log
+
           compression-level: 9
+
           if-no-files-found: error
           
